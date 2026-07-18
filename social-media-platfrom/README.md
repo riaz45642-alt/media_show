@@ -1,16 +1,46 @@
-# React + Vite
+# SafeZone
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A calm, ad-free, safety-first social platform for kids & teenagers.
 
-Currently, two official plugins are available:
+## Stack
+- React (Vite) + Tailwind CSS — frontend (`/src`)
+- Node.js/Express + PostgreSQL-ready — backend (`/backend`)
+- Smart Ethical Shield — placeholder AI moderation architecture (`services/moderationService.js` on both ends)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Run the frontend
+```bash
+npm install
+npm run dev
+```
+Visit http://localhost:5173 — sign up (any email/password + age) to enter the app.
 
-## React Compiler
+## Run the backend (optional, API scaffold only)
+```bash
+cd backend
+npm install
+cp .env.example .env   # set DATABASE_URL, JWT_SECRET
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Structure
+```
+src/
+  components/{common,layout,cards,navigation,ui}
+  pages/        Login, Signup, Home, Videos, Explore, Notifications,
+                 Messages, Profile, EditProfile, Settings, ParentControls,
+                 Reports, SafeCenter, About
+  context/      AuthContext, ThemeContext
+  hooks/        useScrollDirection, useModeration
+  services/     authService (mock), moderationService (Smart Ethical Shield)
+  data/         mock posts/videos/articles/notifications
+  routes/       ProtectedRoute
+  utils/        ageGroup helpers
+backend/
+  src/{config,models,routes,controllers,middleware,services,utils}
+```
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Notes
+- Frontend auth is a local-storage mock so the app works fully offline;
+  swap `src/services/authService.js` calls for real `fetch()`s to `/backend` when ready.
+- Age at signup determines filtering tier (Kids / Teen / Adult) — see `src/utils/ageGroup.js`.
+- Bottom navigation auto-hides on scroll-down and reveals on scroll-up.
