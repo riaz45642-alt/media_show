@@ -1,18 +1,20 @@
 import { NavLink } from 'react-router-dom'
 import { Home, Compass, PlaySquare, Bell, User } from 'lucide-react'
 import useScrollDirection from '../../hooks/useScrollDirection'
-
-const ITEMS = [
-  { to: '/', icon: Home, label: 'Home' },
-  { to: '/explore', icon: Compass, label: 'Explore' },
-  { to: '/videos', icon: PlaySquare, label: 'Videos' },
-  { to: '/notifications', icon: Bell, label: 'Alerts' },
-  { to: '/profile', icon: User, label: 'Profile' },
-]
+import { useLanguage } from '../../context/LanguageContext'
 
 export default function BottomNav() {
   const { direction, atTop } = useScrollDirection()
+  const { t } = useLanguage()
   const visible = direction === 'up' || atTop
+
+  const ITEMS = [
+    { to: '/', icon: Home, label: t('nav_home') },
+    { to: '/explore', icon: Compass, label: t('nav_explore') },
+    { to: '/videos', icon: PlaySquare, label: t('nav_videos') },
+    { to: '/notifications', icon: Bell, label: t('nav_alerts') },
+    { to: '/profile', icon: User, label: t('nav_profile') },
+  ]
 
   return (
     <nav

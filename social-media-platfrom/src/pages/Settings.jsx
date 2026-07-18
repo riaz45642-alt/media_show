@@ -2,10 +2,13 @@ import { useState } from 'react'
 import { Moon, Bell, Focus, Timer, ShieldCheck, Globe } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import Toggle from '../components/ui/Toggle'
+import LanguageSwitcher from '../components/common/LanguageSwitcher'
 import { useTheme } from '../context/ThemeContext'
+import { useLanguage } from '../context/LanguageContext'
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme()
+  const { t } = useLanguage()
   const [notifs, setNotifs] = useState(true)
   const [focusMode, setFocusMode] = useState(false)
   const [screenReminder, setScreenReminder] = useState(true)
@@ -23,7 +26,21 @@ export default function Settings() {
 
   return (
     <div>
-      <PageHeader title="Settings" subtitle="Customize your SafeZone experience." />
+      <PageHeader title={t('settings')} subtitle={t('settings_subtitle')} />
+
+      <div className="soft-card mb-4 flex items-center justify-between gap-3.5 p-4">
+        <div className="flex items-center gap-3.5">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Globe size={17} />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{t('language')}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('language_desc')}</p>
+          </div>
+        </div>
+        <LanguageSwitcher />
+      </div>
+
       <div className="soft-card divide-y divide-gray-100 dark:divide-white/10">
         {rows.map(({ icon: Icon, label, description, checked, onChange }) => (
           <div key={label} className="flex items-center gap-3.5 p-4">
