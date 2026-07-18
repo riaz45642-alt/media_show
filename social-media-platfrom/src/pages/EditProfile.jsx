@@ -21,7 +21,13 @@ export default function EditProfile() {
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
   const handleAvatar = (e) => {
     const file = e.target.files?.[0]
-    if (file) setAvatarPreview(URL.createObjectURL(file))
+    if (!file) return
+    // Use a base64 data URL (not URL.createObjectURL) since the avatar is
+    // persisted to localStorage — object URLs are revoked/invalidated on
+    // reload and would leave the profile picture broken after refresh.
+    const reader = new FileReader()
+    reader.onload = () => setAvatarPreview(reader.result)
+    reader.readAsDataURL(file)
   }
 
   const handleSubmit = (e) => {

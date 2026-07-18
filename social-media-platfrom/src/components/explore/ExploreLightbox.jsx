@@ -1,8 +1,24 @@
+import { useEffect } from 'react'
 import { Heart, MessageCircle, Share2, X } from 'lucide-react'
 import { useLanguage } from '../../context/LanguageContext'
 
 export default function ExploreLightbox({ item, onClose }) {
   const { t } = useLanguage()
+
+  useEffect(() => {
+    if (!item) return
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [item, onClose])
+
   if (!item) return null
 
   return (

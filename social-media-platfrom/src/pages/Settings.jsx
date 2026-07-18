@@ -20,7 +20,7 @@ export default function Settings() {
     { icon: Bell, label: 'Notifications', description: 'Likes, comments & badge alerts', checked: notifs, onChange: setNotifs },
     { icon: Focus, label: 'Focus Mode', description: 'Hide non-essential content while studying', checked: focusMode, onChange: setFocusMode },
     { icon: Timer, label: 'Screen Time Reminder', description: 'Gentle nudge after 45 minutes', checked: screenReminder, onChange: setScreenReminder },
-    { icon: ShieldCheck, label: 'Smart Ethical Shield', description: 'AI moderation for all content you see', checked: shield, onChange: setShield },
+    { icon: ShieldCheck, label: 'Smart Ethical Shield', description: 'Automated safety moderation for all content you see', checked: shield, onChange: setShield },
     { icon: Globe, label: 'Public Profile', description: 'Allow others to find your profile', checked: publicProfile, onChange: setPublicProfile },
   ]
 

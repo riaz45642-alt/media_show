@@ -17,7 +17,12 @@ export default function Signup() {
 
   const handleAvatar = (e) => {
     const file = e.target.files?.[0]
-    if (file) setAvatarPreview(URL.createObjectURL(file))
+    if (!file) return
+    // Base64 data URL survives localStorage persistence + reload, unlike a
+    // blob URL from URL.createObjectURL which is revoked on refresh.
+    const reader = new FileReader()
+    reader.onload = () => setAvatarPreview(reader.result)
+    reader.readAsDataURL(file)
   }
 
   const ageGroup = form.age ? getAgeGroup(form.age) : null
@@ -53,7 +58,7 @@ export default function Signup() {
           </label>
         </div>
         <p className="text-center text-[11px] text-gray-400 -mt-2">
-          Used only for future AI age-verification reference
+          Used only to set the right safety and content filtering level for your account
         </p>
 
         <Input

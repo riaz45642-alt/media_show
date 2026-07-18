@@ -19,7 +19,7 @@ export default function SafeCenter() {
         <ShieldCheck size={30} />
         <h2 className="mt-3 font-display text-lg font-bold">Your Safety, Automated</h2>
         <p className="mt-1 text-sm text-white/85">
-          Every piece of content on SafeZone passes through our AI moderation layer before it reaches you.
+          Every piece of content on SafeZone passes through our automated Smart Ethical Shield moderation layer before it reaches you.
         </p>
       </div>
 

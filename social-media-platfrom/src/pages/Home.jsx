@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Sparkles, Smile, Meh, Frown, Zap, ImagePlus } from 'lucide-react'
+import { Sparkles, Smile, Meh, Frown, Zap, ImagePlus, Wind } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import PostCard from '../components/cards/PostCard'
 import QuoteCard from '../components/cards/QuoteCard'
@@ -7,6 +7,7 @@ import ChallengeCard from '../components/cards/ChallengeCard'
 import { SkeletonCard } from '../components/common/Skeleton'
 import Avatar from '../components/ui/Avatar'
 import CreatePostModal from '../components/feed/CreatePostModal'
+import MindfulBreakModal from '../components/feed/MindfulBreakModal'
 import { QUOTES, CHALLENGES } from '../data/posts'
 import { useAuth } from '../context/AuthContext'
 import { usePosts } from '../context/PostsContext'
@@ -19,6 +20,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [mood, setMood] = useState('chill')
   const [createOpen, setCreateOpen] = useState(false)
+  const [breakOpen, setBreakOpen] = useState(false)
 
   const MOODS = [
     { id: 'happy', icon: Smile, label: t('mood_happy'), color: 'text-secondary' },
@@ -76,6 +78,20 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Mindful Break — a unique, wellbeing-first feature not found on typical feeds */}
+      <button
+        onClick={() => setBreakOpen(true)}
+        className="tap-scale soft-card mt-5 flex w-full items-center gap-3.5 p-4 text-left hover-lift"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full gradient-brand text-white">
+          <Wind size={19} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Take a Mindful Break</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">A 1-minute guided breathing reset</p>
+        </div>
+      </button>
+
       {/* Daily kindness challenge */}
       <div className="mt-5">
         <p className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">{t('daily_challenge')}</p>
@@ -95,6 +111,7 @@ export default function Home() {
       </div>
 
       <CreatePostModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <MindfulBreakModal open={breakOpen} onClose={() => setBreakOpen(false)} />
     </div>
   )
 }

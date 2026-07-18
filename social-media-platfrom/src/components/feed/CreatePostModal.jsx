@@ -23,6 +23,8 @@ export default function CreatePostModal({ open, onClose }) {
   }
 
   const handleClose = () => {
+    // Discard: revoke any object URLs the user attached but never posted.
+    media.forEach((m) => URL.revokeObjectURL(m.src))
     reset()
     onClose()
   }
@@ -34,12 +36,22 @@ export default function CreatePostModal({ open, onClose }) {
       src: URL.createObjectURL(file),
       file,
     }))
-    setMedia((prev) => [...prev, ...items].slice(0, 6))
+    setMedia((prev) => {
+      const combined = [...prev, ...items].slice(0, 6)
+      // Revoke URLs for any files dropped by the 6-item cap so they don't leak.
+      const dropped = [...prev, ...items].slice(6)
+      dropped.forEach((m) => URL.revokeObjectURL(m.src))
+      return combined
+    })
     e.target.value = ''
   }
 
   const removeMedia = (idx) => {
-    setMedia((prev) => prev.filter((_, i) => i !== idx))
+    setMedia((prev) => {
+      const target = prev[idx]
+      if (target) URL.revokeObjectURL(target.src)
+      return prev.filter((_, i) => i !== idx)
+    })
   }
 
   const canPost = text.trim().length > 0 || media.length > 0

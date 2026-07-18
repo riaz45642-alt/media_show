@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { MessageCircle, ShieldCheck } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import Avatar from '../components/ui/Avatar'
 import EmptyState from '../components/common/EmptyState'
+import ConversationView from '../components/messages/ConversationView'
 
 const THREADS = [
   { id: 't1', name: 'Study Group', color: '#4A90E2', last: 'See you at the library!', time: '2h', unread: 2 },
@@ -9,7 +11,31 @@ const THREADS = [
   { id: 't3', name: 'Robotics Team', color: '#F1C40F', last: 'Practice moved to Friday', time: '1d', unread: 0 },
 ]
 
+const SEED_MESSAGES = {
+  t1: [
+    { id: 't1-1', mine: false, text: "Don't forget notes for tomorrow!" },
+    { id: 't1-2', mine: false, text: 'See you at the library!' },
+  ],
+  t2: [
+    { id: 't2-1', mine: false, text: 'That volcano project was awesome' },
+    { id: 't2-2', mine: true, text: 'Thank you! Yours too 🌋' },
+  ],
+  t3: [{ id: 't3-1', mine: false, text: 'Practice moved to Friday' }],
+}
+
 export default function Messages() {
+  const [activeThread, setActiveThread] = useState(null)
+
+  if (activeThread) {
+    return (
+      <ConversationView
+        thread={activeThread}
+        initialMessages={SEED_MESSAGES[activeThread.id] || []}
+        onBack={() => setActiveThread(null)}
+      />
+    )
+  }
+
   return (
     <div>
       <PageHeader title="Messages" subtitle="All chats are monitored by Smart Ethical Shield." />
@@ -26,6 +52,7 @@ export default function Messages() {
           {THREADS.map((t) => (
             <button
               key={t.id}
+              onClick={() => setActiveThread(t)}
               className="soft-card w-full flex items-center gap-3.5 p-4 text-left hover-lift animate-slideUp"
             >
               <Avatar name={t.name} color={t.color} size={46} />
