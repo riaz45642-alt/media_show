@@ -17,6 +17,8 @@ import ParentControls from './pages/ParentControls'
 import Reports from './pages/Reports'
 import SafeCenter from './pages/SafeCenter'
 import About from './pages/About'
+import FollowList from './pages/FollowList'
+import UserProfileView from './pages/UserProfileView'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -46,6 +48,11 @@ export default function App() {
         <Route path="/reports" element={<Reports />} />
         <Route path="/safe-center" element={<SafeCenter />} />
         <Route path="/about" element={<About />} />
+        <Route path="/profile/followers" element={<FollowList type="followers" />} />
+        <Route path="/profile/following" element={<FollowList type="following" />} />
+        <Route path="/users/:userId" element={<UserProfileView />} />
+        <Route path="/users/:userId/followers" element={<FollowList type="followers" />} />
+        <Route path="/users/:userId/following" element={<FollowList type="following" />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

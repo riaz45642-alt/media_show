@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Moon, Sun, ShieldCheck, Search } from 'lucide-react'
+import { Moon, Sun, ShieldCheck } from 'lucide-react'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
 import Avatar from '../ui/Avatar'
@@ -19,12 +19,6 @@ export default function TopBar() {
         </Link>
 
         <div className="flex items-center gap-2">
-          <Link
-            to="/explore"
-            className="tap-scale hidden sm:flex h-9 w-9 items-center justify-center rounded-full hover:bg-primary/10 text-gray-500 dark:text-gray-300"
-          >
-            <Search size={18} />
-          </Link>
           <button
             onClick={toggleTheme}
             className="tap-scale flex h-9 w-9 items-center justify-center rounded-full hover:bg-primary/10 text-gray-500 dark:text-gray-300"

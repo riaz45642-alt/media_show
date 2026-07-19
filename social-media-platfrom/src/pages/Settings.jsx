@@ -1,19 +1,22 @@
 import { useState } from 'react'
-import { Moon, Bell, Focus, Timer, ShieldCheck, Globe } from 'lucide-react'
+import { Moon, Bell, Focus, Timer, ShieldCheck, Globe, Lock } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import Toggle from '../components/ui/Toggle'
 import LanguageSwitcher from '../components/common/LanguageSwitcher'
 import { useTheme } from '../context/ThemeContext'
 import { useLanguage } from '../context/LanguageContext'
+import { useAuth } from '../context/AuthContext'
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme()
   const { t } = useLanguage()
+  const { user, updateUser } = useAuth()
   const [notifs, setNotifs] = useState(true)
   const [focusMode, setFocusMode] = useState(false)
   const [screenReminder, setScreenReminder] = useState(true)
   const [shield, setShield] = useState(true)
-  const [publicProfile, setPublicProfile] = useState(false)
+
+  const isPrivate = user?.isPrivate ?? false
 
   const rows = [
     { icon: Moon, label: 'Dark Mode', description: 'Easier on the eyes at night', checked: theme === 'dark', onChange: toggleTheme },
@@ -21,7 +24,15 @@ export default function Settings() {
     { icon: Focus, label: 'Focus Mode', description: 'Hide non-essential content while studying', checked: focusMode, onChange: setFocusMode },
     { icon: Timer, label: 'Screen Time Reminder', description: 'Gentle nudge after 45 minutes', checked: screenReminder, onChange: setScreenReminder },
     { icon: ShieldCheck, label: 'Smart Ethical Shield', description: 'Automated safety moderation for all content you see', checked: shield, onChange: setShield },
-    { icon: Globe, label: 'Public Profile', description: 'Allow others to find your profile', checked: publicProfile, onChange: setPublicProfile },
+    {
+      icon: isPrivate ? Lock : Globe,
+      label: 'Public Profile',
+      description: isPrivate
+        ? 'Off — only approved followers can see your posts & followers/following'
+        : 'On — anyone can view your profile, posts & followers/following',
+      checked: !isPrivate,
+      onChange: (checked) => updateUser({ isPrivate: !checked }),
+    },
   ]
 
   return (

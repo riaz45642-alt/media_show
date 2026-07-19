@@ -1,33 +1,55 @@
-import { useEffect, useState } from 'react'
-import PageHeader from '../components/common/PageHeader'
-import VideoCard from '../components/cards/VideoCard'
-import { SkeletonRow } from '../components/common/Skeleton'
-import { VIDEOS } from '../data/videos'
+import { useEffect, useRef, useState } from 'react'
+import { ChevronLeft } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import ReelCard from '../components/reels/ReelCard'
+import { REELS } from '../data/reels'
 
 export default function Videos() {
-  const [loading, setLoading] = useState(true)
+  const containerRef = useRef(null)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [muted, setMuted] = useState(true)
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 500)
-    return () => clearTimeout(t)
+    const el = containerRef.current
+    if (!el) return
+    let raf = null
+    const onScroll = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        const idx = Math.round(el.scrollTop / el.clientHeight)
+        setActiveIndex((prev) => (prev === idx ? prev : idx))
+        raf = null
+      })
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
   }, [])
 
   return (
-    <div>
-      <PageHeader title="Videos" subtitle="Fun, educational & fully moderated clips." />
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <SkeletonRow key={i} />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-          {VIDEOS.map((v) => (
-            <VideoCard key={v.id} video={v} />
-          ))}
-        </div>
-      )}
+    <div className="fixed inset-0 z-30 bg-black">
+      <Link
+        to="/"
+        aria-label="Back"
+        className="tap-scale absolute left-4 top-5 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm"
+      >
+        <ChevronLeft size={20} />
+      </Link>
+
+      <div
+        ref={containerRef}
+        className="scrollbar-none h-full w-full snap-y snap-mandatory overflow-y-scroll scroll-smooth"
+        
+      >
+        {REELS.map((reel, i) => (
+          <ReelCard
+            key={reel.id}
+            reel={reel}
+            active={i === activeIndex}
+            muted={muted}
+            onToggleMute={() => setMuted((m) => !m)}
+          />
+        ))}
+      </div>
     </div>
   )
 }

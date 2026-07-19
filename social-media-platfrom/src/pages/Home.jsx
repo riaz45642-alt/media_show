@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { Sparkles, Smile, Meh, Frown, Zap, ImagePlus, Wind } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import PostCard from '../components/cards/PostCard'
-import QuoteCard from '../components/cards/QuoteCard'
 import ChallengeCard from '../components/cards/ChallengeCard'
 import { SkeletonCard } from '../components/common/Skeleton'
 import Avatar from '../components/ui/Avatar'
 import CreatePostModal from '../components/feed/CreatePostModal'
 import MindfulBreakModal from '../components/feed/MindfulBreakModal'
-import { QUOTES, CHALLENGES } from '../data/posts'
+import StoriesBar from '../components/stories/StoriesBar'
+import { CHALLENGES } from '../data/posts'
 import { useAuth } from '../context/AuthContext'
 import { usePosts } from '../context/PostsContext'
 import { useLanguage } from '../context/LanguageContext'
@@ -41,12 +41,12 @@ export default function Home() {
         subtitle={t('home_subtitle')}
       />
 
-      <QuoteCard quote={QUOTES[0]} />
+      <StoriesBar />
 
       {/* Quick post composer */}
       <button
         onClick={() => setCreateOpen(true)}
-        className="tap-scale soft-card mt-5 flex w-full items-center gap-3 p-4 text-left"
+        className="tap-scale soft-card mt-4 flex w-full items-center gap-3 p-4 text-left"
       >
         <Avatar name={user?.name || 'You'} src={user?.avatar} size={38} />
         <span className="flex-1 rounded-full bg-gray-50 dark:bg-white/5 px-4 py-2.5 text-sm text-gray-400">

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Settings as SettingsIcon, Edit3, Award, Gauge, LogOut, Grid3x3, Bookmark, Plus } from 'lucide-react'
+import { Settings as SettingsIcon, Edit3, Award, Gauge, LogOut, Grid3x3, Bookmark, Plus, Lock } from 'lucide-react'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import ProfileGrid from '../components/profile/ProfileGrid'
@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext'
 import { usePosts } from '../context/PostsContext'
 import { useLanguage } from '../context/LanguageContext'
 import { getAgeGroup, AGE_GROUP_LABEL } from '../utils/ageGroup'
+import { FOLLOWERS, FOLLOWING } from '../data/users'
 
 export default function Profile() {
   const { user, logout } = useAuth()
@@ -42,20 +43,25 @@ export default function Profile() {
             {AGE_GROUP_LABEL[ageGroup]}
           </span>
         )}
+        {user?.isPrivate && (
+          <span className="ml-2 mt-2 inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/10 px-3 py-1 text-xs font-semibold text-gray-500 dark:text-gray-300">
+            <Lock size={11} /> Private account
+          </span>
+        )}
 
         <div className="mt-4 flex items-center justify-center gap-6">
           <div>
             <p className="font-display text-lg font-bold text-gray-800 dark:text-gray-100">{myPosts.length}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">{t('profile_posts')}</p>
           </div>
-          <div>
-            <p className="font-display text-lg font-bold text-gray-800 dark:text-gray-100">248</p>
+          <Link to="/profile/followers" className="hover-lift">
+            <p className="font-display text-lg font-bold text-gray-800 dark:text-gray-100">{FOLLOWERS.length}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">{t('followers')}</p>
-          </div>
-          <div>
-            <p className="font-display text-lg font-bold text-gray-800 dark:text-gray-100">180</p>
+          </Link>
+          <Link to="/profile/following" className="hover-lift">
+            <p className="font-display text-lg font-bold text-gray-800 dark:text-gray-100">{FOLLOWING.length}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">{t('following')}</p>
-          </div>
+          </Link>
         </div>
 
         <div className="mt-4 flex items-center justify-center gap-2.5">
