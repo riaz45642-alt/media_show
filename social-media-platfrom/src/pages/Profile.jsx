@@ -6,6 +6,7 @@ import Button from '../components/ui/Button'
 import ProfileGrid from '../components/profile/ProfileGrid'
 import CreatePostModal from '../components/feed/CreatePostModal'
 import EmptyState from '../components/common/EmptyState'
+import TrustBadge from '../components/common/TrustBadge'
 import { useAuth } from '../context/AuthContext'
 import { usePosts } from '../context/PostsContext'
 import { useLanguage } from '../context/LanguageContext'
@@ -48,6 +49,9 @@ export default function Profile() {
             <Lock size={11} /> Private account
           </span>
         )}
+        <div className="mt-2.5 flex justify-center">
+          <TrustBadge />
+        </div>
 
         <div className="mt-4 flex items-center justify-center gap-6">
           <div>
@@ -120,6 +124,12 @@ export default function Profile() {
             <Bookmark size={16} /> {t('profile_saved')}
           </button>
         </div>
+
+        {tab === 'saved' && (
+          <Link to="/collections" className="mt-3 flex items-center justify-end text-xs font-semibold text-primary">
+            Manage Collections →
+          </Link>
+        )}
 
         <div className="mt-3">
           {activePosts.length === 0 ? (

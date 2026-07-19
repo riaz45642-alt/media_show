@@ -3,6 +3,7 @@ import { Heart, MessageCircle, Share2, Bookmark, Flag, MoreHorizontal } from 'lu
 import { Link } from 'react-router-dom'
 import Avatar from '../ui/Avatar'
 import SafeBadge from '../common/SafeBadge'
+import ContentHealthBadge from '../common/ContentHealthBadge'
 import PostMedia from '../feed/PostMedia'
 import CommentsSheet from '../feed/CommentsSheet'
 import ShareSheet from '../feed/ShareSheet'
@@ -34,6 +35,7 @@ export default function PostCard({ post }) {
         </div>
         <div className="flex items-center gap-2">
           {post.safe && <SafeBadge />}
+          <ContentHealthBadge post={post} />
           <button className="tap-scale text-gray-300 hover:text-gray-500">
             <MoreHorizontal size={18} />
           </button>

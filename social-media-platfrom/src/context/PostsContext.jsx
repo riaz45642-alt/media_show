@@ -16,6 +16,10 @@ export function PostsProvider({ children }) {
   // so posts persist for the session but intentionally are not written to
   // localStorage — object URLs don't survive a page reload.
   const [posts, setPosts] = useState(() => [...MY_SEED_POSTS, ...POSTS])
+  // Saved Collections: { id, name, postIds: [] }[] — session-only, like posts above.
+  const [collections, setCollections] = useState([
+    { id: 'col-default', name: 'All Saved', postIds: [] },
+  ])
 
   const toggleLike = (id) => {
     setPosts((prev) =>
@@ -66,15 +70,51 @@ export function PostsProvider({ children }) {
   const myPosts = useMemo(() => posts.filter((p) => p.own), [posts])
   const savedPosts = useMemo(() => posts.filter((p) => p.saved), [posts])
 
+  const createCollection = (name) => {
+    if (!name?.trim()) return
+    setCollections((prev) => [...prev, { id: nextId('col'), name: name.trim(), postIds: [] }])
+  }
+
+  const renameCollection = (id, name) => {
+    if (!name?.trim()) return
+    setCollections((prev) => prev.map((c) => (c.id === id ? { ...c, name: name.trim() } : c)))
+  }
+
+  const deleteCollection = (id) => {
+    setCollections((prev) => prev.filter((c) => c.id !== id))
+  }
+
+  const addToCollection = (collectionId, postId) => {
+    setCollections((prev) =>
+      prev.map((c) =>
+        c.id === collectionId && !c.postIds.includes(postId)
+          ? { ...c, postIds: [...c.postIds, postId] }
+          : c
+      )
+    )
+  }
+
+  const removeFromCollection = (collectionId, postId) => {
+    setCollections((prev) =>
+      prev.map((c) => (c.id === collectionId ? { ...c, postIds: c.postIds.filter((id) => id !== postId) } : c))
+    )
+  }
+
   const value = {
     posts,
     myPosts,
     savedPosts,
+    collections,
     addPost,
     toggleLike,
     toggleSave,
     addComment,
     incrementShare,
+    createCollection,
+    renameCollection,
+    deleteCollection,
+    addToCollection,
+    removeFromCollection,
   }
 
   return <PostsContext.Provider value={value}>{children}</PostsContext.Provider>
