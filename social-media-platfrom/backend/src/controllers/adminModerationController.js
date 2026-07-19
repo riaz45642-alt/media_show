@@ -1,4 +1,5 @@
 import { pool } from '../config/db.js'
+import { createNotification } from '../services/notificationService.js'
 
 // GET /api/admin/moderation/queue?status=flagged&type=post
 export async function listQueue(req, res, next) {
@@ -75,6 +76,22 @@ export async function applyDecision(req, res, next) {
     )
 
     if (!rows[0]) return res.status(404).json({ message: 'Not found' })
+
+    if (type !== 'user' && rows[0].user_id) {
+      const textByAction = {
+        approve: `Your ${type} was reviewed and approved.`,
+        reject: `Your ${type} was reviewed and rejected.${note ? ` Reason: ${note}` : ''}`,
+        restore: `Your ${type} was restored by a moderator.`,
+      }
+      await createNotification({
+        userId: rows[0].user_id,
+        category: 'moderation',
+        type: 'moderation',
+        text: textByAction[action],
+        link: `/moderation-history`,
+      })
+    }
+
     res.json({ updated: rows[0] })
   } catch (err) {
     next(err)

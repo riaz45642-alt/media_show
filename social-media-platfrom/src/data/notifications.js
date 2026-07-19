@@ -8,6 +8,7 @@ export const NOTIFICATIONS = [
   { id: 'n7', type: 'follower', category: 'followers', text: 'Zoe H. started following you', time: '4h ago', read: false },
   { id: 'n8', type: 'message', category: 'messages', text: 'You have a new message from Study Group', time: '5h ago', read: true },
   { id: 'n9', type: 'moderation', category: 'moderation', text: 'Your post is under manual review', time: '6h ago', read: false },
+  { id: 'n12', type: 'appeal', category: 'appeals', text: 'Your appeal for "Meme caption..." was approved', time: '3h ago', read: false },
   { id: 'n10', type: 'report', category: 'reports', text: 'A report you filed was resolved', time: '1d ago', read: true },
   { id: 'n11', type: 'security', category: 'security', text: 'New login detected from a new device', time: '2d ago', read: false },
 ]
@@ -20,6 +21,7 @@ export const NOTIFICATION_CATEGORIES = [
   { key: 'followers', label: 'Followers' },
   { key: 'messages', label: 'Messages' },
   { key: 'moderation', label: 'Moderation' },
+  { key: 'appeals', label: 'Appeals' },
   { key: 'reports', label: 'Reports' },
   { key: 'security', label: 'Security' },
   { key: 'system', label: 'System' },

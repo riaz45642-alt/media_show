@@ -25,6 +25,8 @@ import Forbidden from './pages/Forbidden'
 import ServerError from './pages/ServerError'
 import Maintenance from './pages/Maintenance'
 import SavedCollections from './pages/SavedCollections'
+import Appeals from './pages/Appeals'
+import ModerationHistory from './pages/ModerationHistory'
 
 export default function App() {
   return (
@@ -59,6 +61,8 @@ export default function App() {
         <Route path="/users/:userId/followers" element={<FollowList type="followers" />} />
         <Route path="/users/:userId/following" element={<FollowList type="following" />} />
         <Route path="/collections" element={<SavedCollections />} />
+        <Route path="/appeals" element={<Appeals />} />
+        <Route path="/moderation-history" element={<ModerationHistory />} />
       </Route>
 
       <Route path="/admin" element={<AdminModeration />} />

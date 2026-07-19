@@ -9,6 +9,9 @@ import moderationRoutes from './routes/moderationRoutes.js'
 import reportRoutes from './routes/reportRoutes.js'
 import commentRoutes from './routes/commentRoutes.js'
 import adminModerationRoutes from './routes/adminModerationRoutes.js'
+import appealRoutes from './routes/appealRoutes.js'
+import adminAppealRoutes from './routes/adminAppealRoutes.js'
+import notificationRoutes from './routes/notificationRoutes.js'
 
 dotenv.config()
 
@@ -39,6 +42,9 @@ app.use('/api/posts/:postId/comments', commentRoutes)
 app.use('/api/moderation', moderationRoutes)
 app.use('/api/reports', reportRoutes)
 app.use('/api/admin/moderation', adminModerationRoutes)
+app.use('/api/appeals', appealRoutes)
+app.use('/api/admin/appeals', adminAppealRoutes)
+app.use('/api/notifications', notificationRoutes)
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not found' })

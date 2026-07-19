@@ -145,6 +145,12 @@ export default function Profile() {
       </div>
 
       <div className="mt-6 space-y-2">
+        <Link to="/moderation-history" className="soft-card flex items-center justify-between p-4 text-sm font-medium text-gray-700 dark:text-gray-200 hover-lift">
+          Moderation History
+        </Link>
+        <Link to="/appeals" className="soft-card flex items-center justify-between p-4 text-sm font-medium text-gray-700 dark:text-gray-200 hover-lift">
+          My Appeals
+        </Link>
         <Link to="/safe-center" className="soft-card flex items-center justify-between p-4 text-sm font-medium text-gray-700 dark:text-gray-200 hover-lift">
           {t('safe_center')}
         </Link>

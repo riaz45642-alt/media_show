@@ -6,12 +6,16 @@ import { USER_TABLE_SQL } from './models/User.js'
 import { POST_TABLE_SQL } from './models/Post.js'
 import { COMMENT_TABLE_SQL } from './models/Comment.js'
 import { REPORT_TABLE_SQL } from './models/Report.js'
+import { APPEAL_TABLE_SQL } from './models/Appeal.js'
+import { NOTIFICATION_TABLE_SQL } from './models/Notification.js'
 
 const statements = [
   ['users', USER_TABLE_SQL],
   ['posts', POST_TABLE_SQL],
   ['comments', COMMENT_TABLE_SQL],
   ['reports', REPORT_TABLE_SQL],
+  ['appeals', APPEAL_TABLE_SQL],
+  ['notifications', NOTIFICATION_TABLE_SQL],
 ]
 
 async function run() {
