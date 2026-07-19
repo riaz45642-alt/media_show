@@ -1,12 +1,15 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Moon, Sun, ShieldCheck } from 'lucide-react'
+import { Moon, Sun, ShieldCheck, Search } from 'lucide-react'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
 import Avatar from '../ui/Avatar'
+import SearchOverlay from '../search/SearchOverlay'
 
 export default function TopBar() {
   const { theme, toggleTheme } = useTheme()
   const { user } = useAuth()
+  const [searchOpen, setSearchOpen] = useState(false)
 
   return (
     <header className="sticky top-0 z-40 glass border-b border-white/40 dark:border-white/5">
@@ -20,6 +23,13 @@ export default function TopBar() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setSearchOpen(true)}
+            className="tap-scale flex h-9 w-9 items-center justify-center rounded-full hover:bg-primary/10 text-gray-500 dark:text-gray-300"
+            aria-label="Search"
+          >
+            <Search size={18} />
+          </button>
+          <button
             onClick={toggleTheme}
             className="tap-scale flex h-9 w-9 items-center justify-center rounded-full hover:bg-primary/10 text-gray-500 dark:text-gray-300"
             aria-label="Toggle theme"
@@ -31,6 +41,8 @@ export default function TopBar() {
           </Link>
         </div>
       </div>
+
+      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
     </header>
   )
 }
