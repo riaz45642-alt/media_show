@@ -9,8 +9,10 @@ router.post(
   '/',
   requireAuth,
   validateBody({
-    text: { type: 'string', maxLength: 2000 },
+    text: { type: 'string', maxLength: 5000 },
     imageUrl: { type: 'string', maxLength: 2000 },
+    imageBase64: { type: 'string', maxLength: 8_000_000 },
+    imageMimeType: { type: 'string', maxLength: 60 },
     tag: { type: 'string', maxLength: 40 },
   }),
   createPost

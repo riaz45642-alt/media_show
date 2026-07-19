@@ -7,6 +7,8 @@ import userRoutes from './routes/userRoutes.js'
 import postRoutes from './routes/postRoutes.js'
 import moderationRoutes from './routes/moderationRoutes.js'
 import reportRoutes from './routes/reportRoutes.js'
+import commentRoutes from './routes/commentRoutes.js'
+import adminModerationRoutes from './routes/adminModerationRoutes.js'
 
 dotenv.config()
 
@@ -33,8 +35,10 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'SafeZone
 app.use('/api/auth', authRoutes)
 app.use('/api/users', userRoutes)
 app.use('/api/posts', postRoutes)
+app.use('/api/posts/:postId/comments', commentRoutes)
 app.use('/api/moderation', moderationRoutes)
 app.use('/api/reports', reportRoutes)
+app.use('/api/admin/moderation', adminModerationRoutes)
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not found' })

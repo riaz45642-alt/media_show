@@ -19,6 +19,7 @@ import SafeCenter from './pages/SafeCenter'
 import About from './pages/About'
 import FollowList from './pages/FollowList'
 import UserProfileView from './pages/UserProfileView'
+import AdminModeration from './pages/AdminModeration'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -54,6 +55,8 @@ export default function App() {
         <Route path="/users/:userId/followers" element={<FollowList type="followers" />} />
         <Route path="/users/:userId/following" element={<FollowList type="following" />} />
       </Route>
+
+      <Route path="/admin" element={<AdminModeration />} />
 
       <Route path="*" element={<NotFound />} />
     </Routes>

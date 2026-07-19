@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { pool } from '../config/db.js'
 import { generateToken } from '../utils/generateToken.js'
+import { validateDisplayName } from '../services/ruleBasedFilter.js'
 
 function ageGroupFor(age) {
   if (age < 13) return 'kids'
@@ -11,6 +12,16 @@ function ageGroupFor(age) {
 export async function signup(req, res, next) {
   try {
     const { name, email, password, age, avatarUrl } = req.body
+
+    const usernameCheck = validateDisplayName(name)
+    if (!usernameCheck.valid) {
+      return res.status(422).json({
+        message: 'That name is not allowed',
+        flags: usernameCheck.flags,
+        suggestions: usernameCheck.suggestions,
+      })
+    }
+
     const passwordHash = await bcrypt.hash(password, 10)
     const ageGroup = ageGroupFor(Number(age))
 
