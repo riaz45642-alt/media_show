@@ -1,0 +1,14 @@
+[build]
+  base = "social-media-platfrom"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Needed because this is a React Router (SPA) app — without this, refreshing
+# any non-root route (e.g. /profile, /explore) returns a Netlify 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
