@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Sparkles, Smile, Meh, Frown, Zap } from 'lucide-react'
+import { Sparkles, Smile, Meh, Frown, Zap, Wind } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import PostCard from '../components/cards/PostCard'
 import ChallengeCard from '../components/cards/ChallengeCard'
 import { SkeletonCard } from '../components/common/Skeleton'
 import StoriesBar from '../components/stories/StoriesBar'
+import MindfulBreakModal from '../components/feed/MindfulBreakModal'
 import { CHALLENGES } from '../data/posts'
 import { useAuth } from '../context/AuthContext'
 import { usePosts } from '../context/PostsContext'
@@ -16,6 +17,7 @@ export default function Home() {
   const { t } = useLanguage()
   const [loading, setLoading] = useState(true)
   const [mood, setMood] = useState('chill')
+  const [breakOpen, setBreakOpen] = useState(false)
 
   const MOODS = [
     { id: 'happy', icon: Smile, label: t('mood_happy'), color: 'text-secondary' },
@@ -40,9 +42,17 @@ export default function Home() {
 
       {/* Mood based feed */}
       <div className="mt-5 soft-card p-4">
-        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-1.5">
-          <Sparkles size={15} className="text-accent-dark" /> {t('mood_prompt')}
-        </p>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
+            <Sparkles size={15} className="text-accent-dark" /> {t('mood_prompt')}
+          </p>
+          <button
+            onClick={() => setBreakOpen(true)}
+            className="tap-scale inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary"
+          >
+            <Wind size={13} /> Take a break
+          </button>
+        </div>
         <div className="grid grid-cols-4 gap-2">
           {MOODS.map(({ id, icon: Icon, label, color }) => (
             <button
@@ -77,6 +87,7 @@ export default function Home() {
           : posts.map((post) => <PostCard key={post.id} post={post} />)}
       </div>
 
+      <MindfulBreakModal open={breakOpen} onClose={() => setBreakOpen(false)} />
     </div>
   )
 }

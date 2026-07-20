@@ -33,7 +33,7 @@ export default function PostCard({ post }) {
             <p className="text-xs text-gray-400">{post.time}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           {post.safe && <SafeBadge />}
           <ContentHealthBadge post={post} />
           <button className="tap-scale text-gray-300 hover:text-gray-500">
@@ -79,9 +79,17 @@ export default function PostCard({ post }) {
               <Share2 size={19} />
             </button>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => toggleSave(post.id)} className="tap-scale text-gray-500 dark:text-gray-400">
-              <Bookmark size={19} className={post.saved ? 'fill-accent-dark text-accent-dark' : ''} />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => toggleSave(post.id)}
+              className={`tap-scale inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors duration-200 ${
+                post.saved
+                  ? 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'
+                  : 'bg-secondary/10 text-secondary-dark dark:text-secondary'
+              }`}
+            >
+              <Bookmark size={14} className={post.saved ? 'fill-red-500' : ''} />
+              {post.saved ? 'Unsave' : 'Save'}
             </button>
             <Link to="/reports" className="tap-scale text-gray-300 hover:text-red-400" title="Report content">
               <Flag size={16} />
