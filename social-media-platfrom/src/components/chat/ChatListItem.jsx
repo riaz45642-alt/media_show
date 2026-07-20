@@ -31,7 +31,7 @@ export default function ChatListItem({ conversation, user, unread, onClick, onPi
     <div className="relative">
       <button
         onClick={onClick}
-        className="soft-card w-full flex items-center gap-3.5 p-4 text-left hover-lift animate-slideUp"
+        className="soft-card w-full flex items-center gap-3.5 p-4 pr-11 text-left hover-lift animate-slideUp"
       >
         <div className="relative shrink-0">
           <Avatar name={user?.name || 'User'} src={user?.avatar} color={user?.color} size={46} />
@@ -62,13 +62,13 @@ export default function ChatListItem({ conversation, user, unread, onClick, onPi
       <button
         onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o) }}
         aria-label="Conversation options"
-        className="tap-scale absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10"
+        className="tap-scale absolute right-2.5 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10"
       >
         <MoreVertical size={15} />
       </button>
 
       {menuOpen && (
-        <div className="soft-card absolute right-3 top-11 z-20 w-40 overflow-hidden p-1 shadow-soft animate-scaleIn">
+        <div className="soft-card absolute right-2.5 top-14 z-20 w-40 overflow-hidden p-1 shadow-soft animate-scaleIn">
           <button
             onClick={() => { onPin(); setMenuOpen(false) }}
             className="tap-scale flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10"

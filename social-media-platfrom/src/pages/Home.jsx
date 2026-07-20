@@ -13,7 +13,7 @@ import { useLanguage } from '../context/LanguageContext'
 
 export default function Home() {
   const { user } = useAuth()
-  const { posts } = usePosts()
+  const { visiblePosts: posts } = usePosts()
   const { t } = useLanguage()
   const [loading, setLoading] = useState(true)
   const [mood, setMood] = useState('chill')

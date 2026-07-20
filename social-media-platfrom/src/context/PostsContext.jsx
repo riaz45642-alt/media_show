@@ -16,6 +16,8 @@ export function PostsProvider({ children }) {
   // so posts persist for the session but intentionally are not written to
   // localStorage — object URLs don't survive a page reload.
   const [posts, setPosts] = useState(() => [...MY_SEED_POSTS, ...POSTS])
+  const [mutedAuthors, setMutedAuthors] = useState([])
+  const [blockedAuthors, setBlockedAuthors] = useState([])
   // Saved Collections: { id, name, postIds: [] }[] — session-only, like posts above.
   const [collections, setCollections] = useState([
     { id: 'col-default', name: 'All Saved', postIds: [] },
@@ -67,8 +69,28 @@ export function PostsProvider({ children }) {
     return post
   }
 
+  const deletePost = (id) => {
+    setPosts((prev) => prev.filter((p) => p.id !== id))
+  }
+
+  const editPost = (id, text) => {
+    setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, text, edited: true } : p)))
+  }
+
+  const toggleMuteAuthor = (author) => {
+    setMutedAuthors((prev) => (prev.includes(author) ? prev.filter((a) => a !== author) : [...prev, author]))
+  }
+
+  const toggleBlockAuthor = (author) => {
+    setBlockedAuthors((prev) => (prev.includes(author) ? prev.filter((a) => a !== author) : [...prev, author]))
+  }
+
   const myPosts = useMemo(() => posts.filter((p) => p.own), [posts])
   const savedPosts = useMemo(() => posts.filter((p) => p.saved), [posts])
+  const visiblePosts = useMemo(
+    () => posts.filter((p) => !blockedAuthors.includes(p.author) && !mutedAuthors.includes(p.author)),
+    [posts, blockedAuthors, mutedAuthors]
+  )
 
   const createCollection = (name) => {
     if (!name?.trim()) return
@@ -102,6 +124,7 @@ export function PostsProvider({ children }) {
 
   const value = {
     posts,
+    visiblePosts,
     myPosts,
     savedPosts,
     collections,
@@ -110,6 +133,12 @@ export function PostsProvider({ children }) {
     toggleSave,
     addComment,
     incrementShare,
+    deletePost,
+    editPost,
+    mutedAuthors,
+    blockedAuthors,
+    toggleMuteAuthor,
+    toggleBlockAuthor,
     createCollection,
     renameCollection,
     deleteCollection,

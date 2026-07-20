@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { Heart, MessageCircle, Share2, Bookmark, Flag, MoreHorizontal } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Heart, MessageCircle, Share2, Bookmark, Check, X } from 'lucide-react'
 import Avatar from '../ui/Avatar'
 import SafeBadge from '../common/SafeBadge'
-import ContentHealthBadge from '../common/ContentHealthBadge'
+import PostMenu from './PostMenu'
 import PostMedia from '../feed/PostMedia'
 import CommentsSheet from '../feed/CommentsSheet'
 import ShareSheet from '../feed/ShareSheet'
@@ -11,16 +10,23 @@ import { usePosts } from '../../context/PostsContext'
 import { useLanguage } from '../../context/LanguageContext'
 
 export default function PostCard({ post }) {
-  const { toggleLike, toggleSave } = usePosts()
+  const { toggleLike, toggleSave, editPost } = usePosts()
   const { t } = useLanguage()
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [heartBurst, setHeartBurst] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(post.text || '')
 
   const doubleTapLike = () => {
     if (!post.likedByMe) toggleLike(post.id)
     setHeartBurst(true)
     setTimeout(() => setHeartBurst(false), 700)
+  }
+
+  const saveEdit = () => {
+    editPost(post.id, draft.trim())
+    setEditing(false)
   }
 
   return (
@@ -30,15 +36,12 @@ export default function PostCard({ post }) {
           <Avatar name={post.author} src={post.avatarSrc} color={post.avatarColor} size={42} />
           <div>
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{post.author}</p>
-            <p className="text-xs text-gray-400">{post.time}</p>
+            <p className="text-xs text-gray-400">{post.time}{post.edited ? ' · Edited' : ''}</p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          {post.safe && <SafeBadge />}
-          <ContentHealthBadge post={post} />
-          <button className="tap-scale text-gray-300 hover:text-gray-500">
-            <MoreHorizontal size={18} />
-          </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <SafeBadge post={post} />
+          <PostMenu post={post} onEdit={() => { setDraft(post.text || ''); setEditing(true) }} />
         </div>
       </div>
 
@@ -55,8 +58,27 @@ export default function PostCard({ post }) {
       )}
 
       <div className="p-4 sm:p-5 pt-3.5">
-        {post.media?.length === 0 && (
-          <p className="mb-3.5 text-[15px] leading-relaxed text-gray-700 dark:text-gray-200">{post.text}</p>
+        {editing ? (
+          <div className="mb-3.5">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={3}
+              className="w-full rounded-2xl border border-gray-200 dark:border-white/10 bg-transparent p-3 text-[15px] text-gray-700 dark:text-gray-200 focus-ring"
+            />
+            <div className="mt-2 flex justify-end gap-2">
+              <button onClick={() => setEditing(false)} className="tap-scale flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold text-gray-500">
+                <X size={13} /> Cancel
+              </button>
+              <button onClick={saveEdit} className="tap-scale flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white">
+                <Check size={13} /> Save
+              </button>
+            </div>
+          </div>
+        ) : (
+          post.media?.length === 0 && (
+            <p className="mb-3.5 text-[15px] leading-relaxed text-gray-700 dark:text-gray-200">{post.text}</p>
+          )
         )}
 
         <div className="flex items-center justify-between border-t border-gray-100 dark:border-white/10 pt-3 -mt-1">
@@ -79,25 +101,20 @@ export default function PostCard({ post }) {
               <Share2 size={19} />
             </button>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => toggleSave(post.id)}
-              className={`tap-scale inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors duration-200 ${
-                post.saved
-                  ? 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'
-                  : 'bg-secondary/10 text-secondary-dark dark:text-secondary'
-              }`}
-            >
-              <Bookmark size={14} className={post.saved ? 'fill-red-500' : ''} />
-              {post.saved ? 'Unsave' : 'Save'}
-            </button>
-            <Link to="/reports" className="tap-scale text-gray-300 hover:text-red-400" title="Report content">
-              <Flag size={16} />
-            </Link>
-          </div>
+          <button
+            onClick={() => toggleSave(post.id)}
+            className={`tap-scale inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors duration-200 ${
+              post.saved
+                ? 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'
+                : 'bg-secondary/10 text-secondary-dark dark:text-secondary'
+            }`}
+          >
+            <Bookmark size={14} className={post.saved ? 'fill-red-500' : ''} />
+            {post.saved ? 'Unsave' : 'Save'}
+          </button>
         </div>
 
-        {post.media?.length > 0 && post.text && (
+        {!editing && post.media?.length > 0 && post.text && (
           <p className="mt-3 text-[15px] leading-relaxed text-gray-700 dark:text-gray-200">
             <span className="font-semibold text-gray-800 dark:text-gray-100">{post.author} </span>
             {post.text}
