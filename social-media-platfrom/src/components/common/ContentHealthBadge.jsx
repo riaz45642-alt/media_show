@@ -1,28 +1,30 @@
-import { Sparkles, AlertTriangle, Eye } from 'lucide-react'
+import { Sparkles, CheckCircle2, XCircle } from 'lucide-react'
 import { computeContentHealth } from '../../utils/reputation'
 
-// Per-post Community status. Kept minimal — a single labeled pill with a
-// hover tooltip for the score, instead of a clickable breakdown panel.
+// Icon-only Community + Safety indicators — no text labels, tooltips carry
+// the meaning so the post header stays clean and uncluttered.
 export default function ContentHealthBadge({ post }) {
   const health = computeContentHealth(post)
-
-  const isReview = health.status === 'Under Review'
-  const isGood = health.status === 'Community Safe'
-  const label = isReview ? 'Under Review' : 'Community'
-  const Icon = isReview ? AlertTriangle : isGood ? Sparkles : Eye
-  const color = isReview
-    ? 'text-red-500 bg-red-50 dark:bg-red-500/10'
-    : isGood
-    ? 'text-secondary-dark bg-secondary/10'
-    : 'text-amber-600 bg-amber-50 dark:bg-amber-500/10'
+  const isSafe = health.status !== 'Under Review'
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${color}`}
-      title={`Content Health Score: ${health.overall}/100`}
-    >
-      <Icon size={12} />
-      {label}
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary"
+        title="Community"
+        aria-label="Community"
+      >
+        <Sparkles size={14} />
+      </span>
+      <span
+        className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${
+          isSafe ? 'bg-secondary/10 text-secondary-dark' : 'bg-red-50 text-red-500 dark:bg-red-500/10'
+        }`}
+        title={isSafe ? 'Safe' : 'Unsafe'}
+        aria-label={isSafe ? 'Safe' : 'Unsafe'}
+      >
+        {isSafe ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
+      </span>
     </span>
   )
 }
