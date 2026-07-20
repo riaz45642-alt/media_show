@@ -134,7 +134,18 @@ export default function ReelCard({ reel, active, muted, onToggleMute }) {
         comments={comments}
         onAdd={(text) => setComments((prev) => [...prev, { id: `rc-${Date.now()}`, author: 'You', text }])}
       />
-      <ShareSheet post={{ id: reel.id, author: reel.author.name }} open={shareOpen} onClose={() => setShareOpen(false)} />
+      <ShareSheet
+        item={{
+          id: reel.id,
+          kind: 'reel',
+          title: reel.author.name,
+          subtitle: reel.caption,
+          image: null,
+          color: reel.author.color,
+        }}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+      />
     </div>
   )
 }

@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Moon, Sun, ShieldCheck, Search } from 'lucide-react'
+import { Moon, Sun, ShieldCheck, Search, Bell, Clapperboard } from 'lucide-react'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
+import { useNotifications } from '../../context/NotificationsContext'
 import Avatar from '../ui/Avatar'
 import SearchOverlay from '../search/SearchOverlay'
 
 export default function TopBar() {
   const { theme, toggleTheme } = useTheme()
   const { user } = useAuth()
+  const { unreadCount } = useNotifications()
   const [searchOpen, setSearchOpen] = useState(false)
 
   return (
@@ -29,6 +31,26 @@ export default function TopBar() {
           >
             <Search size={18} />
           </button>
+          <Link
+            to="/videos"
+            className="tap-scale flex h-9 w-9 items-center justify-center rounded-full hover:bg-primary/10 text-gray-500 dark:text-gray-300"
+            aria-label="Reels"
+            title="Reels"
+          >
+            <Clapperboard size={18} />
+          </Link>
+          <Link
+            to="/notifications"
+            className="tap-scale relative flex h-9 w-9 items-center justify-center rounded-full hover:bg-primary/10 text-gray-500 dark:text-gray-300"
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+          >
+            <Bell size={18} />
+            {unreadCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4.5 min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-[#141a2a]">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </Link>
           <button
             onClick={toggleTheme}
             className="tap-scale flex h-9 w-9 items-center justify-center rounded-full hover:bg-primary/10 text-gray-500 dark:text-gray-300"

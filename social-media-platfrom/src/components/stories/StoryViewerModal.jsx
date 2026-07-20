@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Send } from 'lucide-react'
 import Avatar from '../ui/Avatar'
+import ShareSheet from '../feed/ShareSheet'
 
 const DURATION = 5000
 
 export default function StoryViewerModal({ users, activeIndex, onClose, onNext, onPrev }) {
   const [progress, setProgress] = useState(0)
+  const [shareOpen, setShareOpen] = useState(false)
   const open = activeIndex !== null && activeIndex !== undefined
   const user = open ? users[activeIndex] : null
 
   useEffect(() => {
-    if (!open) return
+    if (!open || shareOpen) return
     setProgress(0)
     const start = Date.now()
     const tick = setInterval(() => {
@@ -22,7 +24,7 @@ export default function StoryViewerModal({ users, activeIndex, onClose, onNext, 
       }
     }, 50)
     return () => clearInterval(tick)
-  }, [open, activeIndex, onNext])
+  }, [open, activeIndex, onNext, shareOpen])
 
   useEffect(() => {
     if (!open) return
@@ -61,6 +63,14 @@ export default function StoryViewerModal({ users, activeIndex, onClose, onNext, 
         <button aria-label="Previous story" onClick={onPrev} className="absolute inset-y-0 left-0 w-1/3" />
         <button aria-label="Next story" onClick={onNext} className="absolute inset-y-0 right-0 w-1/3" />
 
+        <button
+          onClick={() => setShareOpen(true)}
+          aria-label="Send story"
+          className="tap-scale absolute bottom-6 right-5 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm hover:bg-white/25"
+        >
+          <Send size={19} />
+        </button>
+
         {/* Progress bars */}
         <div className="absolute inset-x-3 top-3 flex gap-1.5">
           {users.map((u, i) => (
@@ -83,6 +93,16 @@ export default function StoryViewerModal({ users, activeIndex, onClose, onNext, 
           </button>
         </div>
       </div>
+
+      <ShareSheet
+        item={
+          user
+            ? { id: user.id, kind: 'story', title: user.name, subtitle: 'Shared a moment from their day ✨', image: null, color: user.color }
+            : null
+        }
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+      />
     </div>
   )
 }

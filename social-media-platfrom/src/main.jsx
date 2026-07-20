@@ -7,6 +7,8 @@ import { ThemeProvider } from './context/ThemeContext.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { LanguageProvider } from './context/LanguageContext.jsx'
 import { PostsProvider } from './context/PostsContext.jsx'
+import { ChatProvider } from './context/ChatContext.jsx'
+import { NotificationsProvider } from './context/NotificationsContext.jsx'
 import './styles/index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -17,7 +19,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <ThemeProvider>
             <AuthProvider>
               <PostsProvider>
-                <App />
+                <NotificationsProvider>
+                  <ChatProvider>
+                    <App />
+                  </ChatProvider>
+                </NotificationsProvider>
               </PostsProvider>
             </AuthProvider>
           </ThemeProvider>

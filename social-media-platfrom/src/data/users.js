@@ -4,13 +4,13 @@ import { SAMPLE_PHOTOS } from './posts'
 // and account-privacy demos entirely on the client (no backend user table
 // wired up yet — swap for real API calls when ready).
 export const USERS = [
-  { id: 'u1', name: 'Maya R.', color: '#4A90E2', avatar: SAMPLE_PHOTOS[1], isPrivate: false, hasStory: true },
-  { id: 'u2', name: 'Leo P.', color: '#2ECC71', avatar: SAMPLE_PHOTOS[2], isPrivate: false, hasStory: true },
-  { id: 'u3', name: 'Aiden K.', color: '#F1C40F', avatar: SAMPLE_PHOTOS[3], isPrivate: true, hasStory: true },
-  { id: 'u4', name: 'Zoe H.', color: '#E67E22', avatar: SAMPLE_PHOTOS[4], isPrivate: false, hasStory: true },
-  { id: 'u5', name: 'Study Group', color: '#9B59B6', avatar: SAMPLE_PHOTOS[5], isPrivate: false, hasStory: false },
-  { id: 'u6', name: 'Robotics Team', color: '#1ABC9C', avatar: SAMPLE_PHOTOS[6], isPrivate: true, hasStory: true },
-  { id: 'u7', name: 'Nina T.', color: '#E74C3C', avatar: SAMPLE_PHOTOS[0], isPrivate: false, hasStory: true },
+  { id: 'u1', name: 'Maya R.', color: '#4A90E2', avatar: SAMPLE_PHOTOS[1], isPrivate: false, hasStory: true, isOnline: true },
+  { id: 'u2', name: 'Leo P.', color: '#2ECC71', avatar: SAMPLE_PHOTOS[2], isPrivate: false, hasStory: true, isOnline: true },
+  { id: 'u3', name: 'Aiden K.', color: '#F1C40F', avatar: SAMPLE_PHOTOS[3], isPrivate: true, hasStory: true, isOnline: false },
+  { id: 'u4', name: 'Zoe H.', color: '#E67E22', avatar: SAMPLE_PHOTOS[4], isPrivate: false, hasStory: true, isOnline: true },
+  { id: 'u5', name: 'Study Group', color: '#9B59B6', avatar: SAMPLE_PHOTOS[5], isPrivate: false, hasStory: false, isOnline: false },
+  { id: 'u6', name: 'Robotics Team', color: '#1ABC9C', avatar: SAMPLE_PHOTOS[6], isPrivate: true, hasStory: true, isOnline: false },
+  { id: 'u7', name: 'Nina T.', color: '#E74C3C', avatar: SAMPLE_PHOTOS[0], isPrivate: false, hasStory: true, isOnline: true },
 ]
 
 // Followers/following lists for the "current user" (id: 'me') — id 'u3' and

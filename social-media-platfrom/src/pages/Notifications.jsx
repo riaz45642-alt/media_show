@@ -5,7 +5,8 @@ import {
 } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import EmptyState from '../components/common/EmptyState'
-import { NOTIFICATIONS, NOTIFICATION_CATEGORIES } from '../data/notifications'
+import { NOTIFICATION_CATEGORIES } from '../data/notifications'
+import { useNotifications } from '../context/NotificationsContext'
 
 const ICONS = {
   badge: { icon: Award, color: 'text-accent-dark bg-accent/15' },
@@ -26,7 +27,7 @@ const DEFAULT_PREFS = Object.fromEntries(NOTIFICATION_CATEGORIES.filter((c) => c
 const PREFS_KEY = 'safezone_notification_prefs'
 
 export default function Notifications() {
-  const [items, setItems] = useState(NOTIFICATIONS)
+  const { items, unreadCount, markAllRead, markRead } = useNotifications()
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [showPrefs, setShowPrefs] = useState(false)
@@ -46,16 +47,12 @@ export default function Notifications() {
     })
   }
 
-  const unreadCount = useMemo(() => items.filter((n) => !n.read).length, [items])
   const filtered = useMemo(() => {
     let list = filter === 'all' ? items : items.filter((n) => n.category === filter)
     list = list.filter((n) => prefs[n.category] !== false)
     if (query.trim()) list = list.filter((n) => n.text.toLowerCase().includes(query.trim().toLowerCase()))
     return list
   }, [items, filter, prefs, query])
-
-  const markAllRead = () => setItems((prev) => prev.map((n) => ({ ...n, read: true })))
-  const markRead = (id) => setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
 
   return (
     <div>

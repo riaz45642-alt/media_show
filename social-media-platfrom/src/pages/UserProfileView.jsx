@@ -1,18 +1,27 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ChevronLeft, Lock, ShieldCheck } from 'lucide-react'
+import { ChevronLeft, Lock, ShieldCheck, MessageCircle, Share2 } from 'lucide-react'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import EmptyState from '../components/common/EmptyState'
+import ShareSheet from '../components/feed/ShareSheet'
 import { USERS, FOLLOWERS, FOLLOWING } from '../data/users'
+import { useChat } from '../context/ChatContext'
 
 export default function UserProfileView() {
   const { userId } = useParams()
   const navigate = useNavigate()
+  const { findOrCreateConversation } = useChat()
   const user = USERS.find((u) => u.id === userId)
 
   const alreadyFollowing = FOLLOWING.some((u) => u.id === userId)
   const [following, setFollowing] = useState(alreadyFollowing)
+  const [shareOpen, setShareOpen] = useState(false)
+
+  const messageUser = () => {
+    const convo = findOrCreateConversation(userId)
+    navigate(`/messages/${convo.id}`)
+  }
 
   if (!user) {
     return (
@@ -33,13 +42,22 @@ export default function UserProfileView() {
 
   return (
     <div>
-      <button
-        onClick={() => navigate(-1)}
-        aria-label="Back"
-        className="tap-scale mb-5 flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-white/5 shadow-card text-gray-500"
-      >
-        <ChevronLeft size={18} />
-      </button>
+      <div className="mb-5 flex items-center justify-between">
+        <button
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+          className="tap-scale flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-white/5 shadow-card text-gray-500"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <button
+          onClick={() => setShareOpen(true)}
+          aria-label="Share profile"
+          className="tap-scale flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-white/5 shadow-card text-gray-500"
+        >
+          <Share2 size={16} />
+        </button>
+      </div>
 
       <div className="soft-card p-6 text-center animate-scaleIn">
         <div className="flex justify-center">
@@ -79,10 +97,15 @@ export default function UserProfileView() {
           )}
         </div>
 
-        <div className="mt-4 flex justify-center">
+        <div className="mt-4 flex justify-center gap-2">
           <Button variant={following ? 'outline' : 'primary'} size="sm" onClick={() => setFollowing((f) => !f)}>
             {following ? 'Following' : 'Follow'}
           </Button>
+          {!locked && (
+            <Button variant="ghost" size="sm" onClick={messageUser} className="bg-gray-100 dark:bg-white/5">
+              <MessageCircle size={15} /> Message
+            </Button>
+          )}
         </div>
       </div>
 
@@ -95,6 +118,12 @@ export default function UserProfileView() {
           />
         </div>
       )}
+
+      <ShareSheet
+        item={{ id: user.id, kind: 'profile', title: user.name, subtitle: user.isPrivate ? 'Private account' : 'Public account', image: user.avatar, color: user.color }}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+      />
     </div>
   )
 }
