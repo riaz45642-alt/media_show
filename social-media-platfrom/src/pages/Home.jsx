@@ -69,15 +69,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Daily kindness challenge */}
-      <div className="mt-5">
-        <p className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">{t('daily_challenge')}</p>
-        <div className="space-y-2">
-          {CHALLENGES.map((c) => (
-            <ChallengeCard key={c.id} challenge={c} />
-          ))}
-        </div>
-      </div>
+
 
       {/* Feed */}
       <div className="mt-6 space-y-4">
