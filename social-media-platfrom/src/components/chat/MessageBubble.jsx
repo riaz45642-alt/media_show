@@ -81,12 +81,14 @@ export default function MessageBubble({ message, mine, replyPreview, onReply, on
         ) : (
           <div
             className={`max-w-full whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm ${
-              mine
+              message.flagged
+                ? 'border border-dashed border-red-300 bg-red-50 text-red-500 dark:bg-red-500/10 dark:text-red-300'
+                : mine
                 ? 'bg-primary text-white rounded-br-md'
                 : 'bg-white dark:bg-white/10 text-gray-700 dark:text-gray-200 rounded-bl-md shadow-card'
             }`}
           >
-            {message.text}
+            {message.flagged ? "This message wasn't sent — it may go against SafeZone's community guidelines." : message.text}
           </div>
         )}
 

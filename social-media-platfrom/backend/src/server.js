@@ -12,6 +12,7 @@ import adminModerationRoutes from './routes/adminModerationRoutes.js'
 import appealRoutes from './routes/appealRoutes.js'
 import adminAppealRoutes from './routes/adminAppealRoutes.js'
 import notificationRoutes from './routes/notificationRoutes.js'
+import aiRoutes from './routes/aiRoutes.js'
 
 dotenv.config()
 
@@ -45,6 +46,7 @@ app.use('/api/admin/moderation', adminModerationRoutes)
 app.use('/api/appeals', appealRoutes)
 app.use('/api/admin/appeals', adminAppealRoutes)
 app.use('/api/notifications', notificationRoutes)
+app.use('/api/ai', aiRoutes)
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not found' })

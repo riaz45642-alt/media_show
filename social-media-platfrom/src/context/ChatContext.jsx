@@ -1,5 +1,8 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import { SEED_CONVERSATIONS, CANNED_REPLIES, nextMessageId, findUser } from '../data/messages'
+import { AI_ASSISTANT_ID } from '../data/users'
+import { moderateContent } from '../services/moderationService'
+import { askSafeZoneAI } from '../services/aiChatService'
 
 const ChatContext = createContext(null)
 
@@ -64,7 +67,28 @@ export function ChatProvider({ children }) {
     }, 2100)
   }
 
+  const askAIAssistant = (conversationId, userText) => {
+    setTyping((prev) => ({ ...prev, [conversationId]: true }))
+    const convo = conversations.find((c) => c.id === conversationId)
+    const history = (convo?.messages || [])
+      .slice(-8)
+      .map((m) => ({ role: m.senderId === 'me' ? 'user' : 'assistant', text: m.text }))
+
+    askSafeZoneAI(userText, history).then((reply) => {
+      setTyping((prev) => ({ ...prev, [conversationId]: false }))
+      touchConversation(conversationId, (c) => ({
+        ...c,
+        messages: [
+          ...c.messages,
+          { id: nextMessageId(), senderId: AI_ASSISTANT_ID, type: 'text', text: reply, time: new Date().toISOString(), status: 'delivered' },
+        ],
+      }))
+    })
+  }
+
   const sendMessage = useCallback((conversationId, payload) => {
+    const isAIConvo = conversationId === AI_ASSISTANT_ID
+
     const message = {
       id: nextMessageId(),
       senderId: 'me',
@@ -74,18 +98,48 @@ export function ChatProvider({ children }) {
       shared: payload.shared || null,
       replyTo: payload.replyTo || null,
       time: new Date().toISOString(),
-      status: 'sent',
+      status: 'sending',
+      flagged: false,
     }
+
     touchConversation(conversationId, (c) => ({ ...c, messages: [...c.messages, message] }))
-    clearLater(() => {
+
+    // Every outgoing text message is checked against the same hybrid
+    // moderation pipeline used for posts/comments (rule-based + Gemini AI +
+    // risk scoring) before it's marked as actually sent.
+    const textToCheck = message.type === 'text' ? message.text : ''
+    moderateContent({ text: textToCheck, contentType: 'message' }).then((result) => {
+      if (textToCheck && !result.safe) {
+        touchConversation(conversationId, (c) => ({
+          ...c,
+          messages: c.messages.map((m) =>
+            m.id === message.id ? { ...m, status: 'blocked', flagged: true, flagReason: result.textResult?.flags?.[0] } : m
+          ),
+        }))
+        return
+      }
+
       touchConversation(conversationId, (c) => ({
         ...c,
-        messages: c.messages.map((m) => (m.id === message.id ? { ...m, status: 'delivered' } : m)),
+        messages: c.messages.map((m) => (m.id === message.id ? { ...m, status: 'sent' } : m)),
       }))
-    }, 500)
-    simulateReply(conversationId)
+      clearLater(() => {
+        touchConversation(conversationId, (c) => ({
+          ...c,
+          messages: c.messages.map((m) => (m.id === message.id ? { ...m, status: 'delivered' } : m)),
+        }))
+      }, 500)
+
+      if (isAIConvo) {
+        askAIAssistant(conversationId, textToCheck)
+      } else {
+        simulateReply(conversationId)
+      }
+    })
+
     return message
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations])
 
   const deleteMessage = useCallback((conversationId, messageId) => {
     touchConversation(conversationId, (c) => ({

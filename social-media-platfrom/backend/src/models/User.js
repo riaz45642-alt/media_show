@@ -7,6 +7,9 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   age INT NOT NULL,
   age_group VARCHAR(20) NOT NULL,
+  gender VARCHAR(20),
+  face_verified BOOLEAN DEFAULT false,
+  face_verified_at TIMESTAMP,
   avatar_url TEXT,
   bio TEXT,
   safe_zone_score INT DEFAULT 80,
@@ -29,4 +32,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS risk_score INT DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS moderation_reason TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS warnings_count INT DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();
+ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS face_verified BOOLEAN DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS face_verified_at TIMESTAMP;
 `

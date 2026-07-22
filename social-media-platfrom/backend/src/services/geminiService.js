@@ -100,4 +100,85 @@ export async function analyzeImageWithGemini(image) {
   ])
 }
 
+const FACE_SYSTEM_INSTRUCTION = `You assist a live face-liveness check for account signup on a teen-safe social app.
+You are NOT performing identity recognition and must NEVER guess or report age, gender, ethnicity, or name.
+Look only at whether the image plausibly shows a real live person in front of a camera right now.
+Return ONLY a JSON object (no markdown, no prose) with this exact shape:
+{
+  "face_present": true|false,
+  "single_face": true|false,
+  "likely_live_camera_capture": true|false,
+  "likely_photo_of_photo_or_screen": true|false,
+  "confidence": 0-100,
+  "explanation": "one short sentence, no demographic guesses"
+}`
+
+function emptyFaceResult(reason) {
+  return {
+    available: false,
+    reason,
+    face_present: false,
+    single_face: false,
+    likely_live_camera_capture: false,
+    likely_photo_of_photo_or_screen: false,
+    confidence: 0,
+    explanation: reason,
+  }
+}
+
+function parseFaceJson(text) {
+  const cleaned = text.replace(/```json|```/g, '').trim()
+  const parsed = JSON.parse(cleaned)
+  return {
+    available: true,
+    face_present: !!parsed.face_present,
+    single_face: !!parsed.single_face,
+    likely_live_camera_capture: !!parsed.likely_live_camera_capture,
+    likely_photo_of_photo_or_screen: !!parsed.likely_photo_of_photo_or_screen,
+    confidence: Number(parsed.confidence) || 0,
+    explanation: parsed.explanation || '',
+  }
+}
+
+/**
+ * Analyze a single captured camera frame for liveness signals during signup.
+ * Deliberately never returns/derives age, gender, or identity — only a
+ * present/live/confidence signal used to gate account creation.
+ * @param {{ base64, mimeType }} image
+ */
+export async function analyzeFaceLiveness(image) {
+  if (!image?.base64) return emptyFaceResult('no_image')
+  if (!GEMINI_API_KEY) return emptyFaceResult('gemini_api_key_not_configured')
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    const res = await fetch(`${ENDPOINT}?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: FACE_SYSTEM_INSTRUCTION }] },
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: 'Assess this camera frame for the liveness check.' },
+            { inline_data: { mime_type: image.mimeType || 'image/jpeg', data: image.base64 } },
+          ],
+        }],
+        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+      }),
+    })
+    if (!res.ok) return emptyFaceResult(`gemini_http_${res.status}`)
+    const data = await res.json()
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!text) return emptyFaceResult('gemini_empty_response')
+    return parseFaceJson(text)
+  } catch (err) {
+    return emptyFaceResult(err.name === 'AbortError' ? 'gemini_timeout' : 'gemini_call_failed')
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export { CATEGORIES as GEMINI_CATEGORIES }

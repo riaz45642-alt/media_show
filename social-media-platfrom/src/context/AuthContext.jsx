@@ -13,14 +13,14 @@ export function AuthProvider({ children }) {
     setLoading(false)
   }, [])
 
-  const login = (payload) => {
-    const u = authService.login(payload)
+  const login = async (payload) => {
+    const u = await authService.login(payload)
     setUser(u)
     return u
   }
 
-  const signup = (payload) => {
-    const u = authService.signup(payload)
+  const signup = async (payload) => {
+    const u = await authService.signup(payload)
     setUser(u)
     return u
   }

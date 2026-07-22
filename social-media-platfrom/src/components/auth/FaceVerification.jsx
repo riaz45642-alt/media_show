@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Camera, ShieldCheck, RotateCcw, CheckCircle2, AlertTriangle } from 'lucide-react'
 import Button from '../ui/Button'
+import { verifyFaceLiveness } from '../../services/authService'
 
-// Lightweight, fully client-side liveness check: it captures two frames a
-// beat apart while guiding the user to move slightly, then compares them.
-// A real face-liveness/-match model is out of scope for this demo, so this
-// intentionally only confirms "a live camera feed with a moving subject is
-// present" — it never analyzes facial attributes (no gender, age, or
-// identity inference happens here).
+// Two-stage liveness check. Stage 1 runs fully client-side: it captures two
+// frames a beat apart while guiding the user to move slightly, then compares
+// them for basic motion/lighting sanity. Stage 2 sends a single frame to the
+// backend, which asks Gemini's vision model to confirm a real live face is
+// present (not a photo-of-a-photo/screen) — that frame is analyzed in memory
+// only and is never stored. Neither stage analyzes facial attributes: no
+// gender, age, or identity inference happens here or on the server.
 const MIN_LUMA = 12
 const MAX_LUMA = 245
 const MIN_DIFF = 4
@@ -20,6 +22,16 @@ function sampleFrame(video) {
   const ctx = canvas.getContext('2d')
   ctx.drawImage(video, 0, 0, 48, 48)
   return ctx.getImageData(0, 0, 48, 48)
+}
+
+function captureJpegBase64(video) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 320
+  canvas.height = 320
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(video, 0, 0, 320, 320)
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
+  return dataUrl.split(',')[1]
 }
 
 function frameStats(imgData) {
@@ -75,9 +87,9 @@ export default function FaceVerification({ onVerified }) {
     setPhase('moving')
     await new Promise((r) => setTimeout(r, 1400))
     const frame2 = sampleFrame(video)
+    const finalShot = captureJpegBase64(video)
 
     setPhase('analyzing')
-    await new Promise((r) => setTimeout(r, 600))
 
     const luma1 = frameStats(frame1)
     const luma2 = frameStats(frame2)
@@ -85,12 +97,21 @@ export default function FaceVerification({ onVerified }) {
     const lumaOk = luma1 > MIN_LUMA && luma1 < MAX_LUMA && luma2 > MIN_LUMA && luma2 < MAX_LUMA
     const diffOk = diff > MIN_DIFF && diff < MAX_DIFF
 
+    if (!lumaOk || !diffOk) {
+      stopCamera()
+      setPhase('failed')
+      return
+    }
+
+    // Stage 2: server-side Gemini vision check on the final frame only.
+    const serverResult = await verifyFaceLiveness(finalShot)
     stopCamera()
-    if (lumaOk && diffOk) {
+
+    if (serverResult.verified) {
       setPhase('success')
-      // Only a pass/fail + timestamp is reported — no image is captured,
-      // stored, or sent anywhere.
-      onVerified()
+      // Only a pass/fail + short-lived token is reported back — the frame
+      // itself was analyzed in memory on the server and discarded.
+      onVerified(serverResult.token || null)
     } else {
       setPhase('failed')
     }
@@ -107,8 +128,9 @@ export default function FaceVerification({ onVerified }) {
         <ShieldCheck size={17} className="mt-0.5 shrink-0 text-primary" />
         <p className="text-xs text-gray-500 dark:text-gray-400">
           We just confirm a live person is in front of the camera to keep SafeZone free of fake accounts.
-          No photo is saved — only a verified/not-verified result is stored on your account. Your profile
-          picture is set separately, later, if you choose to add one.
+          Your final frame is analyzed once by our AI check and immediately discarded — nothing is saved,
+          and we never store an image or infer your gender/age from it. Your profile picture is set
+          separately, later, if you choose to add one.
         </p>
       </div>
 
