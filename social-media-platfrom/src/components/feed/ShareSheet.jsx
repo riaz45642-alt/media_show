@@ -1,24 +1,29 @@
 import { useState } from 'react'
-import { Link2, BookImage, Check, CheckCircle2, Search } from 'lucide-react'
+import { Link2, BookImage, Check, CheckCircle2, AlertCircle, Search } from 'lucide-react'
 import Modal from '../ui/Modal'
 import Avatar from '../ui/Avatar'
 import { useLanguage } from '../../context/LanguageContext'
 import { usePosts } from '../../context/PostsContext'
 import { useChat } from '../../context/ChatContext'
+import { useStories } from '../../context/StoriesContext'
 import { USERS, FOLLOWERS, FOLLOWING } from '../../data/users'
 
 // Modern, Instagram-style share sheet. Accepts a generic `item` describing
 // the shareable content: { id, kind: 'post'|'reel'|'video'|'image'|'story'|'profile',
-// title, subtitle, image, color }. For backwards compatibility it also
-// accepts the original `post` prop used by the feed.
+// title, subtitle, image, color, media: { type: 'image'|'video', src },
+// shareToStoryDisabled, shareToStoryDisabledReason }. For backwards
+// compatibility it also accepts the original `post` prop used by the feed.
 export default function ShareSheet({ item, post, open, onClose }) {
   const { t } = useLanguage()
   const { incrementShare } = usePosts()
   const { conversations, shareContent } = useChat()
+  const { addStory } = useStories()
   const [copied, setCopied] = useState(false)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState([])
   const [sent, setSent] = useState(false)
+  const [storyShared, setStoryShared] = useState(false)
+  const [shareError, setShareError] = useState(null)
 
   const content = item || (post ? {
     id: post.id,
@@ -27,9 +32,17 @@ export default function ShareSheet({ item, post, open, onClose }) {
     subtitle: post.text?.slice(0, 60) || 'Shared a post',
     image: post.media?.[0]?.src || null,
     color: post.avatarColor || '#4A90E2',
+    media: post.media?.[0] ? { type: post.media[0].type, src: post.media[0].src } : null,
   } : null)
 
   if (!content) return null
+
+  // Resolve the actual media that would be published to the story: prefer an
+  // explicit `media` descriptor (needed for video reels/stories, since those
+  // don't have a static `image` thumbnail), falling back to `image` for
+  // simple image shares (posts, photos, profile avatars).
+  const storyMedia = content.media || (content.image ? { type: 'image', src: content.image } : null)
+  const canShareToStory = !!storyMedia?.src && !content.shareToStoryDisabled
 
   const recentIds = [...conversations]
     .filter((c) => !c.archived)
@@ -60,6 +73,8 @@ export default function ShareSheet({ item, post, open, onClose }) {
     setQuery('')
     setSent(false)
     setCopied(false)
+    setStoryShared(false)
+    setShareError(null)
     onClose()
   }
 
@@ -72,8 +87,8 @@ export default function ShareSheet({ item, post, open, onClose }) {
   }
 
   const handleQuickAction = async (kind) => {
-    if (post) incrementShare(post.id)
     if (kind === 'copy') {
+      if (post) incrementShare(post.id)
       try {
         await navigator.clipboard.writeText(`https://safezone.app/${content.kind}/${content.id}`)
       } catch {
@@ -83,20 +98,40 @@ export default function ShareSheet({ item, post, open, onClose }) {
       setTimeout(() => setCopied(false), 1500)
       return
     }
-    resetAndClose()
+
+    if (kind === 'story') {
+      if (!canShareToStory) {
+        setShareError(content.shareToStoryDisabledReason || "This can't be shared to your story")
+        setTimeout(() => setShareError(null), 2200)
+        return
+      }
+      addStory({ type: storyMedia.type, src: storyMedia.src })
+      if (post) incrementShare(post.id)
+      setStoryShared(true)
+      setTimeout(resetAndClose, 1200)
+      return
+    }
   }
 
   return (
     <Modal open={open} onClose={resetAndClose} title={t('share_post') || 'Share'}>
-      {sent ? (
+      {sent || storyShared ? (
         <div className="flex flex-col items-center gap-2 py-8 text-center animate-scaleIn">
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-secondary/15 text-secondary-dark">
             <CheckCircle2 size={28} />
           </span>
-          <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Sent!</p>
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+            {storyShared ? (t('added_to_story') || 'Added to your story!') : 'Sent!'}
+          </p>
         </div>
       ) : (
         <>
+          {shareError && (
+            <div className="mb-3 flex items-center gap-2 rounded-2xl bg-red-50 dark:bg-red-500/10 px-3.5 py-2.5 text-xs font-medium text-red-500 animate-fadeIn">
+              <AlertCircle size={15} className="shrink-0" />
+              <span>{shareError}</span>
+            </div>
+          )}
           <div className="mb-4 grid grid-cols-2 gap-3">
             <button
               onClick={() => handleQuickAction('copy')}
@@ -111,7 +146,10 @@ export default function ShareSheet({ item, post, open, onClose }) {
             </button>
             <button
               onClick={() => handleQuickAction('story')}
-              className="tap-scale flex flex-col items-center gap-2 rounded-2xl border border-gray-100 dark:border-white/10 p-3.5 hover-lift"
+              aria-disabled={!canShareToStory}
+              className={`tap-scale flex flex-col items-center gap-2 rounded-2xl border border-gray-100 dark:border-white/10 p-3.5 ${
+                canShareToStory ? 'hover-lift' : 'cursor-not-allowed opacity-40'
+              }`}
             >
               <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <BookImage size={17} />

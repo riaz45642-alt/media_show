@@ -5,6 +5,7 @@ import Portal from '../ui/Portal'
 import ShareSheet from '../feed/ShareSheet'
 import { useStories } from '../../context/StoriesContext'
 import { useChat } from '../../context/ChatContext'
+import { FOLLOWING } from '../../data/users'
 
 const IMAGE_DURATION = 5000
 
@@ -232,7 +233,19 @@ export default function StoryViewerModal({ entries, activeId, onClose }) {
       <ShareSheet
         item={
           entry
-            ? { id: entry.id, kind: 'story', title: entry.name, subtitle: 'Shared a moment', image: story.type === 'image' ? story.src : null, color: entry.color }
+            ? {
+                id: entry.id,
+                kind: 'story',
+                title: entry.name,
+                subtitle: 'Shared a moment',
+                image: story.type === 'image' ? story.src : null,
+                color: entry.color,
+                media: { type: story.type, src: story.src },
+                // Private accounts' stories can only be re-shared to your own
+                // story by their approved followers.
+                shareToStoryDisabled: entry.id !== 'me' && entry.isPrivate && !FOLLOWING.some((u) => u.id === entry.id),
+                shareToStoryDisabledReason: `${entry.name}'s story is private and can't be reshared`,
+              }
             : null
         }
         open={shareOpen}

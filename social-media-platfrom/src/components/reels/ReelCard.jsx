@@ -142,6 +142,7 @@ export default function ReelCard({ reel, active, muted, onToggleMute }) {
           subtitle: reel.caption,
           image: null,
           color: reel.author.color,
+          media: { type: 'video', src: reel.src },
         }}
         open={shareOpen}
         onClose={() => setShareOpen(false)}

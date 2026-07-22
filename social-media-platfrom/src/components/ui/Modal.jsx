@@ -21,7 +21,7 @@ export default function Modal({ open, onClose, title, children }) {
   return (
     <Portal>
       <div
-        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6"
+        className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-0 sm:p-6"
         role="dialog"
         aria-modal="true"
         aria-label={title}

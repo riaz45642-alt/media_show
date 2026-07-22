@@ -1,10 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Heart, MessageCircle, Share2, X } from 'lucide-react'
 import { useLanguage } from '../../context/LanguageContext'
 import Portal from '../ui/Portal'
+import ShareSheet from '../feed/ShareSheet'
 
 export default function ExploreLightbox({ item, onClose }) {
   const { t } = useLanguage()
+  const [shareOpen, setShareOpen] = useState(false)
 
   useEffect(() => {
     if (!item) return
@@ -58,13 +60,31 @@ export default function ExploreLightbox({ item, onClose }) {
             <span className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
               <MessageCircle size={18} /> {item.comments}
             </span>
-            <span className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+            <button
+              onClick={() => setShareOpen(true)}
+              aria-label="Share"
+              className="tap-scale flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-primary"
+            >
               <Share2 size={18} />
-            </span>
+            </button>
           </div>
         </div>
       </div>
     </div>
+
+      <ShareSheet
+        item={{
+          id: item.id,
+          kind: item.type === 'video' ? 'video' : 'image',
+          title: item.caption || 'Explore',
+          subtitle: item.tag ? `#${item.tag}` : 'Shared from Explore',
+          image: item.type === 'video' ? null : item.src,
+          color: '#4A90E2',
+          media: { type: item.type, src: item.src },
+        }}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+      />
     </Portal>
   )
 }
