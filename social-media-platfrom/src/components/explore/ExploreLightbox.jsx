@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Heart, MessageCircle, Share2, X } from 'lucide-react'
 import { useLanguage } from '../../context/LanguageContext'
+import Portal from '../ui/Portal'
 
 export default function ExploreLightbox({ item, onClose }) {
   const { t } = useLanguage()
@@ -22,7 +23,8 @@ export default function ExploreLightbox({ item, onClose }) {
   if (!item) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/70 backdrop-blur-sm p-0 sm:p-6 animate-fadeIn" onClick={onClose}>
+    <Portal>
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/70 backdrop-blur-sm p-0 sm:p-6 animate-fadeIn" onClick={onClose}>
       <div
         className="relative w-full sm:max-w-md soft-card overflow-hidden rounded-none sm:rounded-3xl animate-scaleIn max-h-full sm:max-h-[88vh]"
         onClick={(e) => e.stopPropagation()}
@@ -63,5 +65,6 @@ export default function ExploreLightbox({ item, onClose }) {
         </div>
       </div>
     </div>
+    </Portal>
   )
 }

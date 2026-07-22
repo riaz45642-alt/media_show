@@ -7,6 +7,7 @@ import ProfileGrid from '../components/profile/ProfileGrid'
 import CreatePostModal from '../components/feed/CreatePostModal'
 import EmptyState from '../components/common/EmptyState'
 import TrustBadge from '../components/common/TrustBadge'
+import GenderTag from '../components/common/GenderTag'
 import { useAuth } from '../context/AuthContext'
 import { usePosts } from '../context/PostsContext'
 import { useLanguage } from '../context/LanguageContext'
@@ -37,7 +38,9 @@ export default function Profile() {
         <div className="flex justify-center">
           <Avatar name={user?.name || 'You'} src={user?.avatar} size={84} ring />
         </div>
-        <h2 className="mt-3 font-display text-lg font-bold text-gray-800 dark:text-gray-100">{user?.name || 'Explorer'}</h2>
+        <h2 className="mt-3 font-display text-lg font-bold text-gray-800 dark:text-gray-100">
+          {user?.name || 'Explorer'} <GenderTag gender={user?.gender} className="text-sm font-medium" />
+        </h2>
         <p className="text-sm text-gray-500 dark:text-gray-400">{user?.email}</p>
         {ageGroup && (
           <span className="mt-2 inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">

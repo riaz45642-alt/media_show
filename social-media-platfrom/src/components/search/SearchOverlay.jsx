@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, X, User as UserIcon, PlayCircle, TrendingUp } from 'lucide-react'
 import Avatar from '../ui/Avatar'
+import Portal from '../ui/Portal'
 import useDebouncedValue from '../../hooks/useDebouncedValue'
 import { USERS } from '../../data/users'
 import { VIDEOS } from '../../data/videos'
@@ -57,7 +58,8 @@ export default function SearchOverlay({ open, onClose }) {
   const noResults = hasQuery && matchedUsers.length === 0 && matchedVideos.length === 0
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={onClose}>
+    <Portal>
+      <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={onClose}>
       <div
         className="mx-auto mt-0 max-w-3xl bg-white dark:bg-gray-900 sm:mt-4 sm:rounded-3xl shadow-card animate-slideUp max-h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -150,5 +152,6 @@ export default function SearchOverlay({ open, onClose }) {
         </div>
       </div>
     </div>
+    </Portal>
   )
 }

@@ -2,16 +2,21 @@ import { useState } from 'react'
 import { Heart, MessageCircle, Share2, Bookmark, Check, X } from 'lucide-react'
 import Avatar from '../ui/Avatar'
 import SafeBadge from '../common/SafeBadge'
+import GenderTag from '../common/GenderTag'
 import PostMenu from './PostMenu'
 import PostMedia from '../feed/PostMedia'
 import CommentsSheet from '../feed/CommentsSheet'
 import ShareSheet from '../feed/ShareSheet'
 import { usePosts } from '../../context/PostsContext'
 import { useLanguage } from '../../context/LanguageContext'
+import { useAuth } from '../../context/AuthContext'
+import { USERS } from '../../data/users'
 
 export default function PostCard({ post }) {
   const { toggleLike, toggleSave, editPost } = usePosts()
   const { t } = useLanguage()
+  const { user } = useAuth()
+  const authorGender = post.own ? user?.gender : USERS.find((u) => u.name === post.author)?.gender
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [heartBurst, setHeartBurst] = useState(false)
@@ -35,7 +40,9 @@ export default function PostCard({ post }) {
         <div className="flex items-center gap-3">
           <Avatar name={post.author} src={post.avatarSrc} color={post.avatarColor} size={42} />
           <div>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{post.author}</p>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+              {post.author} <GenderTag gender={authorGender} className="text-xs font-medium" />
+            </p>
             <p className="text-xs text-gray-400">{post.time}{post.edited ? ' · Edited' : ''}</p>
           </div>
         </div>

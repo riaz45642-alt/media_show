@@ -4,6 +4,7 @@ import { ChevronLeft, Lock, ShieldCheck, MessageCircle, Share2 } from 'lucide-re
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import EmptyState from '../components/common/EmptyState'
+import GenderTag from '../components/common/GenderTag'
 import ShareSheet from '../components/feed/ShareSheet'
 import { USERS, FOLLOWERS, FOLLOWING } from '../data/users'
 import { useChat } from '../context/ChatContext'
@@ -65,6 +66,7 @@ export default function UserProfileView() {
         </div>
         <h2 className="mt-3 flex items-center justify-center gap-1.5 font-display text-lg font-bold text-gray-800 dark:text-gray-100">
           {user.name}
+          <GenderTag gender={user.gender} className="text-sm font-medium" />
           {user.isPrivate && <Lock size={14} className="text-gray-400" />}
         </h2>
         <p className="flex items-center justify-center gap-1 text-xs text-gray-500 dark:text-gray-400">

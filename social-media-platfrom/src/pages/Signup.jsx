@@ -1,40 +1,67 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Mail, Lock, User, Cake, Camera, ShieldCheck } from 'lucide-react'
+import { Mail, Lock, User, Cake, ShieldCheck, ArrowLeft } from 'lucide-react'
 import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
+import FaceVerification from '../components/auth/FaceVerification'
 import { useAuth } from '../context/AuthContext'
 import { getAgeGroup, AGE_GROUP_LABEL, AGE_GROUP_DESC } from '../utils/ageGroup'
+
+const GENDER_OPTIONS = [
+  { value: '', label: 'Prefer not to say' },
+  { value: 'female', label: 'Woman' },
+  { value: 'male', label: 'Man' },
+  { value: 'other', label: 'Non-binary' },
+]
 
 export default function Signup() {
   const { signup } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ name: '', email: '', password: '', age: '' })
-  const [avatarPreview, setAvatarPreview] = useState('')
+  const [step, setStep] = useState('details') // details | verify
+  const [form, setForm] = useState({ name: '', email: '', password: '', age: '', gender: '' })
   const [loading, setLoading] = useState(false)
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
-
-  const handleAvatar = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    // Base64 data URL survives localStorage persistence + reload, unlike a
-    // blob URL from URL.createObjectURL which is revoked on refresh.
-    const reader = new FileReader()
-    reader.onload = () => setAvatarPreview(reader.result)
-    reader.readAsDataURL(file)
-  }
-
   const ageGroup = form.age ? getAgeGroup(form.age) : null
 
-  const handleSubmit = (e) => {
+  const goToVerification = (e) => {
     e.preventDefault()
+    setStep('verify')
+  }
+
+  const completeSignup = () => {
     setLoading(true)
     setTimeout(() => {
-      signup({ ...form, avatar: avatarPreview })
+      // Only a verification flag + timestamp is stored — no face image is
+      // captured or saved anywhere, and gender is exactly what the person
+      // selected above (never inferred from their face).
+      signup({ ...form, faceVerified: true, faceVerifiedAt: new Date().toISOString() })
       setLoading(false)
       navigate('/')
-    }, 600)
+    }, 500)
+  }
+
+  if (step === 'verify') {
+    return (
+      <div className="soft-card p-7">
+        <button
+          onClick={() => setStep('details')}
+          className="tap-scale mb-4 flex items-center gap-1.5 text-sm font-medium text-gray-500 dark:text-gray-400"
+        >
+          <ArrowLeft size={15} /> Back
+        </button>
+        <h2 className="font-display text-xl font-bold text-gray-800 dark:text-gray-100">Verify it's really you</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-5">
+          One last step before your account is created.
+        </p>
+
+        <FaceVerification onVerified={completeSignup} />
+
+        {loading && (
+          <p className="mt-4 text-center text-sm font-medium text-primary">Creating your account…</p>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -44,23 +71,7 @@ export default function Signup() {
         We tailor content protection based on your age.
       </p>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="flex justify-center">
-          <label className="relative cursor-pointer">
-            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-primary/40 bg-primary/5">
-              {avatarPreview ? (
-                <img src={avatarPreview} alt="avatar preview" className="h-full w-full object-cover" />
-              ) : (
-                <Camera size={22} className="text-primary" />
-              )}
-            </div>
-            <input type="file" accept="image/*" onChange={handleAvatar} className="hidden" />
-          </label>
-        </div>
-        <p className="text-center text-[11px] text-gray-400 -mt-2">
-          Used only to set the right safety and content filtering level for your account
-        </p>
-
+      <form onSubmit={goToVerification} className="space-y-4">
         <Input
           label="Full name"
           icon={User}
@@ -103,6 +114,22 @@ export default function Signup() {
           onChange={handleChange}
         />
 
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">
+            Gender <span className="font-normal text-gray-400">(optional, set by you)</span>
+          </label>
+          <select
+            name="gender"
+            value={form.gender}
+            onChange={handleChange}
+            className="w-full rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 focus-ring"
+          >
+            {GENDER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+
         {ageGroup && (
           <div className="flex items-start gap-2.5 rounded-2xl bg-secondary/10 p-3.5 animate-scaleIn">
             <ShieldCheck size={18} className="mt-0.5 text-secondary-dark shrink-0" />
@@ -113,8 +140,8 @@ export default function Signup() {
           </div>
         )}
 
-        <Button type="submit" fullWidth size="lg" disabled={loading}>
-          {loading ? 'Creating account...' : 'Sign Up'}
+        <Button type="submit" fullWidth size="lg">
+          Continue to face verification
         </Button>
       </form>
 

@@ -92,7 +92,7 @@ h1,h2,h3,h4,.font-display{ font-family:'Poppins', sans-serif; }
 
 .badge-glow{ box-shadow: 0 0 0 4px rgba(46,204,113,0.15); }
 
-.page-transition{ animation: fadeIn .35s ease-out both, slideUp .4s cubic-bezier(.22,1,.36,1) both; }
+.page-transition{ animation: fadeIn .35s ease-out both; }
 
 /* line clamp helper (in case tailwind plugin absent) */
 .line-clamp-2{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
