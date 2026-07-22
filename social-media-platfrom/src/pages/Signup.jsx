@@ -29,17 +29,19 @@ export default function Signup() {
     setStep('verify')
   }
 
-  const completeSignup = (faceToken) => {
+  const completeSignup = async (faceToken) => {
     setLoading(true)
-    setTimeout(() => {
+    try {
       // Only a verification flag + timestamp is stored — no face image is
       // captured or saved anywhere, and gender is exactly what the person
       // selected above (never inferred from their face). faceToken proves
       // to the backend that the Gemini liveness check actually passed.
-      signup({ ...form, faceVerified: true, faceVerifiedAt: new Date().toISOString(), faceToken })
-      setLoading(false)
+      await signup({ ...form, faceVerified: true, faceVerifiedAt: new Date().toISOString(), faceToken })
       navigate('/')
-    }, 500)
+    } catch {
+      setLoading(false)
+      setStep('details')
+    }
   }
 
   if (step === 'verify') {
