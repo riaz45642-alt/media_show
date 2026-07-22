@@ -1,4 +1,4 @@
-# SafeZone
+# Media Show
 
 A calm, ad-free, safety-first social platform for kids & teenagers.
 

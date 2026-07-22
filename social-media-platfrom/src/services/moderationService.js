@@ -18,7 +18,7 @@ function localFallback(text = '') {
 }
 
 function authHeaders() {
-  const token = sessionStorage.getItem('safezone_admin_token') || localStorage.getItem('safezone_token')
+  const token = sessionStorage.getItem('mediashow_admin_token') || localStorage.getItem('mediashow_token')
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 

@@ -17,17 +17,17 @@ export function nextMessageId() {
 // message.status: 'sent' | 'delivered' | 'seen'
 export const SEED_CONVERSATIONS = [
   {
-    id: 'safezone-ai',
-    participantId: 'safezone-ai',
+    id: 'mediashow-ai',
+    participantId: 'mediashow-ai',
     pinned: true,
     archived: false,
     isAI: true,
     messages: [
       {
         id: 'seed-ai-1',
-        senderId: 'safezone-ai',
+        senderId: 'mediashow-ai',
         type: 'text',
-        text: "Hi! I'm SafeZone AI 👋 Ask me anything about using the app or staying safe online.",
+        text: "Hi! I'm Media Show AI 👋 Ask me anything about using the app or staying safe online.",
         time: iso(-30),
         status: 'seen',
       },

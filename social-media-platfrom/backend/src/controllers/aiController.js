@@ -12,7 +12,7 @@ export async function chat(req, res, next) {
     const modResult = await moderate({ text: message, userId: req.user?.id, contentType: 'message' })
     if (modResult.status === 'rejected') {
       return res.json({
-        reply: "I can't help with that message — it looks like it may go against SafeZone's community guidelines.",
+        reply: "I can't help with that message — it looks like it may go against Media Show's community guidelines.",
         moderated: true,
       })
     }

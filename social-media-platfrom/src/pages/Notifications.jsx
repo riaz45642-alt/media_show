@@ -24,7 +24,7 @@ const ICONS = {
 }
 
 const DEFAULT_PREFS = Object.fromEntries(NOTIFICATION_CATEGORIES.filter((c) => c.key !== 'all').map((c) => [c.key, true]))
-const PREFS_KEY = 'safezone_notification_prefs'
+const PREFS_KEY = 'mediashow_notification_prefs'
 
 export default function Notifications() {
   const { items, unreadCount, markAllRead, markRead } = useNotifications()

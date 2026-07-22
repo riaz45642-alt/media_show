@@ -90,7 +90,7 @@ export default function ShareSheet({ item, post, open, onClose }) {
     if (kind === 'copy') {
       if (post) incrementShare(post.id)
       try {
-        await navigator.clipboard.writeText(`https://safezone.app/${content.kind}/${content.id}`)
+        await navigator.clipboard.writeText(`https://mediashow.app/${content.kind}/${content.id}`)
       } catch {
         /* clipboard may be unavailable in sandboxed preview — ignore */
       }

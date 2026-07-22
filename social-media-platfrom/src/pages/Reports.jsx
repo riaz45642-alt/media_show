@@ -30,7 +30,7 @@ export default function Reports() {
         </span>
         <h2 className="mt-4 font-display text-lg font-bold text-gray-800 dark:text-gray-100">Report received</h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-xs">
-          Our Smart Ethical Shield team will review this within 24 hours. Thank you for keeping SafeZone kind.
+          Our Smart Ethical Shield team will review this within 24 hours. Thank you for keeping Media Show kind.
         </p>
       </div>
     )
@@ -38,7 +38,7 @@ export default function Reports() {
 
   return (
     <div>
-      <PageHeader title="Report Content" subtitle="Help us keep SafeZone safe for everyone." />
+      <PageHeader title="Report Content" subtitle="Help us keep Media Show safe for everyone." />
       <form onSubmit={handleSubmit} className="soft-card p-6 space-y-4">
         <div>
           <p className="mb-2 text-sm font-medium text-gray-600 dark:text-gray-300">What's the issue?</p>

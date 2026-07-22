@@ -14,7 +14,7 @@ export default class ErrorBoundary extends Component {
   componentDidCatch(error, info) {
     // Kept as console output rather than a remote logger — no backend
     // error-reporting endpoint is wired up in this demo.
-    console.error('SafeZone crashed:', error, info)
+    console.error('Media Show crashed:', error, info)
   }
 
   render() {

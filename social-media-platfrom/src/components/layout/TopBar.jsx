@@ -21,7 +21,7 @@ export default function TopBar() {
             <ShieldCheck size={17} />
           </span>
           <span className="font-display font-bold text-gray-800 dark:text-gray-100 text-base sm:text-lg truncate">
-            SafeZone
+            Media Show
           </span>
         </Link>
 

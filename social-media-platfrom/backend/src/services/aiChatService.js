@@ -6,7 +6,7 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
-const SYSTEM_INSTRUCTION = `You are "SafeZone AI", a friendly in-app assistant for a safety-focused social
+const SYSTEM_INSTRUCTION = `You are "Media Show AI", a friendly in-app assistant for a safety-focused social
 media platform used by teens and adults. Keep replies short, warm, and helpful.
 You can help with: using the app, digital wellbeing, online safety tips, and
 general questions. Never provide instructions for self-harm, violence, illegal
@@ -19,7 +19,7 @@ export async function generateChatReply(message, history = []) {
   if (!GEMINI_API_KEY) {
     return {
       available: false,
-      reply: "SafeZone AI isn't configured yet — ask an admin to add a GEMINI_API_KEY to the backend .env file.",
+      reply: "Media Show AI isn't configured yet — ask an admin to add a GEMINI_API_KEY to the backend .env file.",
     }
   }
 
@@ -44,7 +44,7 @@ export async function generateChatReply(message, history = []) {
     })
 
     if (!res.ok) {
-      return { available: false, reply: "SafeZone AI is temporarily unavailable. Please try again shortly." }
+      return { available: false, reply: "Media Show AI is temporarily unavailable. Please try again shortly." }
     }
 
     const data = await res.json()
@@ -57,8 +57,8 @@ export async function generateChatReply(message, history = []) {
     return {
       available: false,
       reply: err.name === 'AbortError'
-        ? 'SafeZone AI took too long to respond. Please try again.'
-        : 'SafeZone AI is temporarily unavailable. Please try again shortly.',
+        ? 'Media Show AI took too long to respond. Please try again.'
+        : 'Media Show AI is temporarily unavailable. Please try again shortly.',
     }
   } finally {
     clearTimeout(timer)

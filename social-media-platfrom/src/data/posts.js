@@ -108,7 +108,7 @@ export const POSTS = [
 ]
 
 export const QUOTES = [
-  { id: 'q1', text: 'Small steps every day lead to big changes.', author: 'SafeZone Team' },
+  { id: 'q1', text: 'Small steps every day lead to big changes.', author: 'Media Show Team' },
   { id: 'q2', text: 'Be the reason someone smiles today.', author: 'Daily Kindness' },
   { id: 'q3', text: 'Mistakes are proof that you are trying.', author: 'Growth Mindset' },
 ]

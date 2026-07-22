@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 import { SEED_CONVERSATIONS, CANNED_REPLIES, nextMessageId, findUser } from '../data/messages'
 import { AI_ASSISTANT_ID } from '../data/users'
 import { moderateContent } from '../services/moderationService'
-import { askSafeZoneAI } from '../services/aiChatService'
+import { askMediaShowAI } from '../services/aiChatService'
 
 const ChatContext = createContext(null)
 
@@ -74,7 +74,7 @@ export function ChatProvider({ children }) {
       .slice(-8)
       .map((m) => ({ role: m.senderId === 'me' ? 'user' : 'assistant', text: m.text }))
 
-    askSafeZoneAI(userText, history).then((reply) => {
+    askMediaShowAI(userText, history).then((reply) => {
       setTyping((prev) => ({ ...prev, [conversationId]: false }))
       touchConversation(conversationId, (c) => ({
         ...c,

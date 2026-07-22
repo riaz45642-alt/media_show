@@ -4,15 +4,15 @@
 // the app uses the mock local auth layer.
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-const STORAGE_KEY = 'safezone_mock_appeals'
+const STORAGE_KEY = 'mediashow_mock_appeals'
 
 function authHeaders() {
-  const token = sessionStorage.getItem('safezone_admin_token') || localStorage.getItem('safezone_token')
+  const token = sessionStorage.getItem('mediashow_admin_token') || localStorage.getItem('mediashow_token')
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 function hasToken() {
-  return !!(sessionStorage.getItem('safezone_admin_token') || localStorage.getItem('safezone_token'))
+  return !!(sessionStorage.getItem('mediashow_admin_token') || localStorage.getItem('mediashow_token'))
 }
 
 function readMock() {

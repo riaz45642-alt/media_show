@@ -1,5 +1,5 @@
 // App-wide constants
-export const APP_NAME = 'SafeZone'
+export const APP_NAME = 'Media Show'
 export const APP_TAGLINE = 'A calmer, kinder space to share & grow'
 
 export const COLORS = {

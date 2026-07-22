@@ -4,10 +4,10 @@ import { translations, LANGUAGE_META } from '../i18n/translations'
 const LanguageContext = createContext(null)
 
 export function LanguageProvider({ children }) {
-  const [lang, setLang] = useState(() => localStorage.getItem('safezone_lang') || 'en')
+  const [lang, setLang] = useState(() => localStorage.getItem('mediashow_lang') || 'en')
 
   useEffect(() => {
-    localStorage.setItem('safezone_lang', lang)
+    localStorage.setItem('mediashow_lang', lang)
     const meta = LANGUAGE_META[lang] || LANGUAGE_META.en
     document.documentElement.lang = lang
     document.documentElement.dir = meta.dir

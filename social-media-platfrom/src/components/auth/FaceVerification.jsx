@@ -127,7 +127,7 @@ export default function FaceVerification({ onVerified }) {
       <div className="flex items-start gap-2.5 mb-3">
         <ShieldCheck size={17} className="mt-0.5 shrink-0 text-primary" />
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          We just confirm a live person is in front of the camera to keep SafeZone free of fake accounts.
+          We just confirm a live person is in front of the camera to keep Media Show free of fake accounts.
           Your final frame is analyzed once by our AI check and immediately discarded — nothing is saved,
           and we never store an image or infer your gender/age from it. Your profile picture is set
           separately, later, if you choose to add one.

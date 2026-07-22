@@ -3,10 +3,10 @@ import { SAMPLE_PHOTOS } from './posts'
 // Lightweight mock "social graph" used to power Stories, Followers/Following,
 // and account-privacy demos entirely on the client (no backend user table
 // wired up yet — swap for real API calls when ready).
-export const AI_ASSISTANT_ID = 'safezone-ai'
+export const AI_ASSISTANT_ID = 'mediashow-ai'
 
 export const USERS = [
-  { id: AI_ASSISTANT_ID, name: 'SafeZone AI', color: '#6C5CE7', avatar: '', isPrivate: false, hasStory: false, isOnline: true, gender: '', isAI: true },
+  { id: AI_ASSISTANT_ID, name: 'Media Show AI', color: '#6C5CE7', avatar: '', isPrivate: false, hasStory: false, isOnline: true, gender: '', isAI: true },
   { id: 'u1', name: 'Maya R.', color: '#4A90E2', avatar: SAMPLE_PHOTOS[1], isPrivate: false, hasStory: true, isOnline: true, gender: 'female' },
   { id: 'u2', name: 'Leo P.', color: '#2ECC71', avatar: SAMPLE_PHOTOS[2], isPrivate: false, hasStory: true, isOnline: true, gender: 'male' },
   { id: 'u3', name: 'Aiden K.', color: '#F1C40F', avatar: SAMPLE_PHOTOS[3], isPrivate: true, hasStory: true, isOnline: false, gender: 'male' },

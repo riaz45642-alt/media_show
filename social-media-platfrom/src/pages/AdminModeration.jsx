@@ -7,7 +7,7 @@ import { ShieldAlert, Check, X, RotateCcw, Ban, Scale } from 'lucide-react'
 // 'admin' in the `users` table (set manually: UPDATE users SET role='admin'
 // WHERE email = '...').
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-const TOKEN_KEY = 'safezone_admin_token'
+const TOKEN_KEY = 'mediashow_admin_token'
 
 async function api(path, { method = 'GET', body, token } = {}) {
   const res = await fetch(`${API_URL}${path}`, {

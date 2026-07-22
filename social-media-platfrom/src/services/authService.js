@@ -2,8 +2,8 @@
 // verification against Postgres + Gemini), and falls back to a local demo
 // mode if the backend is unreachable, so the UI keeps working either way —
 // same resilience pattern as src/services/moderationService.js.
-const STORAGE_KEY = 'safezone_user'
-const TOKEN_KEY = 'safezone_token'
+const STORAGE_KEY = 'mediashow_user'
+const TOKEN_KEY = 'mediashow_token'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 // POST the final liveness frame to the backend for a Gemini-backed check.

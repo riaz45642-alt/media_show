@@ -34,7 +34,7 @@ app.use((req, res, next) => {
   next()
 })
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'SafeZone API' }))
+app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'Media Show API' }))
 
 app.use('/api/auth', authRoutes)
 app.use('/api/users', userRoutes)
@@ -63,4 +63,4 @@ app.use((err, req, res, next) => {
 })
 
 const PORT = process.env.PORT || 5000
-app.listen(PORT, () => console.log(`SafeZone API running on port ${PORT}`))
+app.listen(PORT, () => console.log(`Media Show API running on port ${PORT}`))

@@ -88,7 +88,7 @@ export default function MessageBubble({ message, mine, replyPreview, onReply, on
                 : 'bg-white dark:bg-white/10 text-gray-700 dark:text-gray-200 rounded-bl-md shadow-card'
             }`}
           >
-            {message.flagged ? "This message wasn't sent — it may go against SafeZone's community guidelines." : message.text}
+            {message.flagged ? "This message wasn't sent — it may go against Media Show's community guidelines." : message.text}
           </div>
         )}
 

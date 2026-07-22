@@ -6,7 +6,7 @@ import Button from '../ui/Button'
 // A short guided breathing exercise. Cycles through inhale / hold / exhale
 // phases with matching durations and a growing/shrinking circle, then ends
 // with a calm affirmation. Designed as a genuinely useful "unique feature"
-// that fits SafeZone's calm, wellbeing-first positioning — not something
+// that fits Media Show's calm, wellbeing-first positioning — not something
 // you'd find bolted onto a typical feed-and-likes social app.
 
 const PHASES = [
