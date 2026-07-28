@@ -64,7 +64,7 @@ async function detectFaceWhenSupported(video) {
 export default function FaceVerification({ onVerified }) {
   const videoRef = useRef(null)
   const streamRef = useRef(null)
-  const [phase, setPhase] = useState('idle') // idle | requesting | live | hold | moving | analyzing | success | failed | denied
+  const [phase, setPhase] = useState('idle') // idle | requesting | live | hold | moving | analyzing | success | failed | service_error | denied
   const [errorMessage, setErrorMessage] = useState('')
 
   const stopCamera = () => {
@@ -140,7 +140,7 @@ export default function FaceVerification({ onVerified }) {
     } catch (error) {
       stopCamera()
       setErrorMessage(error.message || 'Verification service is temporarily unavailable.')
-      setPhase('failed')
+      setPhase(error.code === 'API_UNAVAILABLE' || error.status >= 500 ? 'service_error' : 'failed')
       return
     }
     stopCamera()
@@ -194,13 +194,14 @@ export default function FaceVerification({ onVerified }) {
         {phase === 'analyzing' && 'Verifying…'}
         {phase === 'success' && 'Verified ✓'}
         {phase === 'failed' && "Couldn't confirm a live face"}
+        {phase === 'service_error' && 'Verification service unavailable'}
         {phase === 'denied' && 'Camera access was denied'}
       </p>
 
       <div className="mt-3 flex justify-center">
         {phase === 'idle' && <Button type="button" onClick={startCamera}>Start camera</Button>}
         {phase === 'live' && <Button type="button" onClick={runVerification}>Verify now</Button>}
-        {(phase === 'failed' || phase === 'denied') && (
+        {(phase === 'failed' || phase === 'service_error' || phase === 'denied') && (
           <Button type="button" variant="outline" onClick={retry}>
             <RotateCcw size={15} className="mr-1.5" /> Try again
           </Button>
@@ -210,6 +211,11 @@ export default function FaceVerification({ onVerified }) {
       {phase === 'failed' && (
         <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-red-500">
           <AlertTriangle size={13} /> {errorMessage || 'Make sure you are in good lighting and move slightly when asked.'}
+        </p>
+      )}
+      {phase === 'service_error' && (
+        <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-red-500">
+          <AlertTriangle size={13} /> {errorMessage}
         </p>
       )}
       {phase === 'denied' && (

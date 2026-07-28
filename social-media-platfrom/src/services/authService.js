@@ -16,14 +16,21 @@ function backendIsUsableFromThisPage() {
 
 async function request(path, options = {}) {
   const token = localStorage.getItem(TOKEN_KEY)
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  })
+  let response
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    })
+  } catch (cause) {
+    const error = new Error(`Cannot reach the backend at ${API_URL}. Start it with npm run dev and try again.`, { cause })
+    error.code = 'API_UNAVAILABLE'
+    throw error
+  }
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
     const error = new Error(data.message || data.reason || 'Something went wrong. Please try again.')
@@ -43,6 +50,14 @@ function storeSession({ user, token }) {
 export async function verifyFaceLiveness(firstFrameBase64, secondFrameBase64) {
   if (!backendIsUsableFromThisPage()) {
     throw new Error('Face verification requires the deployed API. Configure VITE_API_URL with your backend HTTPS URL.')
+  }
+  if (getStoredUser()?._firebaseOnly) {
+    const firebaseIdToken = localStorage.getItem(TOKEN_KEY)
+    if (!firebaseIdToken) throw new Error('Your session has expired. Log in again before verification.')
+    storeSession(await request('/auth/firebase', {
+      method: 'POST',
+      body: JSON.stringify({ idToken: firebaseIdToken }),
+    }))
   }
   const data = await request('/auth/verify-face', {
     method: 'POST',
