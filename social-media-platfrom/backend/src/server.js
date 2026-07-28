@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import { createServer } from 'node:http'
 
 import authRoutes from './routes/authRoutes.js'
 import userRoutes from './routes/userRoutes.js'
@@ -13,6 +14,11 @@ import appealRoutes from './routes/appealRoutes.js'
 import adminAppealRoutes from './routes/adminAppealRoutes.js'
 import notificationRoutes from './routes/notificationRoutes.js'
 import aiRoutes from './routes/aiRoutes.js'
+import groupRoutes from './routes/groupRoutes.js'
+import groupMessageRoutes from './routes/groupMessageRoutes.js'
+import callRoutes from './routes/callRoutes.js'
+import presenceRoutes from './routes/presenceRoutes.js'
+import { initSocket } from './sockets/index.js'
 
 dotenv.config()
 
@@ -56,6 +62,10 @@ app.use('/api/appeals', appealRoutes)
 app.use('/api/admin/appeals', adminAppealRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/ai', aiRoutes)
+app.use('/api/groups', groupRoutes)
+app.use('/api/groups', groupMessageRoutes)
+app.use('/api/calls', callRoutes)
+app.use('/api/presence', presenceRoutes)
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not found' })
@@ -71,5 +81,8 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ message: err.status ? err.message : 'Server error' })
 })
 
+const httpServer = createServer(app)
+initSocket(httpServer)
+
 const PORT = process.env.PORT || 5000
-app.listen(PORT, () => console.log(`Media Show API running on port ${PORT}`))
+httpServer.listen(PORT, () => console.log(`Media Show API (with realtime) running on port ${PORT}`))

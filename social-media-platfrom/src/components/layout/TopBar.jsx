@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Moon, Sun, Search, Bell } from 'lucide-react'
+import { Moon, Sun, Search, Bell, Users } from 'lucide-react'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
 import { useNotifications } from '../../context/NotificationsContext'
@@ -30,6 +30,13 @@ export default function TopBar() {
           >
             <Search size={18} />
           </button>
+          <Link
+            to="/groups"
+            className="tap-scale flex h-9 w-9 items-center justify-center rounded-full hover:bg-primary/10 text-gray-500 dark:text-gray-300"
+            aria-label="Groups"
+          >
+            <Users size={18} />
+          </Link>
           <Link
             to="/notifications"
             className="tap-scale relative flex h-9 w-9 items-center justify-center rounded-full hover:bg-primary/10 text-gray-500 dark:text-gray-300"

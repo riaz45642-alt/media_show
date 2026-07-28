@@ -27,6 +27,8 @@ import Maintenance from './pages/Maintenance'
 import SavedCollections from './pages/SavedCollections'
 import Appeals from './pages/Appeals'
 import ModerationHistory from './pages/ModerationHistory'
+import Groups from './pages/Groups'
+import GroupDetail from './pages/GroupDetail'
 
 export default function App() {
   return (
@@ -64,6 +66,8 @@ export default function App() {
         <Route path="/collections" element={<SavedCollections />} />
         <Route path="/appeals" element={<Appeals />} />
         <Route path="/moderation-history" element={<ModerationHistory />} />
+        <Route path="/groups" element={<Groups />} />
+        <Route path="/groups/:groupId" element={<GroupDetail />} />
       </Route>
 
       <Route path="/admin" element={<AdminModeration />} />

@@ -11,6 +11,8 @@ import { ChatProvider } from './context/ChatContext.jsx'
 import { NotificationsProvider } from './context/NotificationsContext.jsx'
 import { StoriesProvider } from './context/StoriesContext.jsx'
 import { VerificationGateProvider } from './context/VerificationGateContext.jsx'
+import { CallProvider } from './context/CallContext.jsx'
+import CallOverlay from './components/calls/CallOverlay.jsx'
 import './styles/index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -25,7 +27,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                   <NotificationsProvider>
                     <ChatProvider>
                       <StoriesProvider>
-                        <App />
+                        <CallProvider>
+                          <App />
+                          <CallOverlay />
+                        </CallProvider>
                       </StoriesProvider>
                     </ChatProvider>
                   </NotificationsProvider>
