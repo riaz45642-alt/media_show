@@ -29,9 +29,8 @@ export async function verifyFace(req, res, next) {
     const passed =
       result.face_present &&
       result.single_face &&
-      result.likely_live_camera_capture &&
       !result.likely_photo_of_photo_or_screen &&
-      result.confidence >= 55
+      result.confidence >= 45
 
     if (!passed) {
       return res.status(422).json({

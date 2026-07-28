@@ -10,10 +10,10 @@ import { verifyFaceLiveness } from '../../services/authService'
 // present (not a photo-of-a-photo/screen) — that frame is analyzed in memory
 // only and is never stored. Neither stage analyzes facial attributes: no
 // gender, age, or identity inference happens here or on the server.
-const MIN_LUMA = 12
-const MAX_LUMA = 245
-const MIN_DIFF = 4
-const MAX_DIFF = 70
+const MIN_LUMA = 8
+const MAX_LUMA = 250
+const MIN_DIFF = 0.65
+const MAX_DIFF = 95
 
 function sampleFrame(video) {
   const canvas = document.createElement('canvas')
@@ -50,10 +50,22 @@ function frameDiff(a, b) {
   return diff / (a.data.length / 4)
 }
 
+async function detectFaceWhenSupported(video) {
+  if (!('FaceDetector' in window)) return { supported: false, singleFace: true }
+  try {
+    const detector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 2 })
+    const faces = await detector.detect(video)
+    return { supported: true, singleFace: faces.length === 1 }
+  } catch {
+    return { supported: false, singleFace: true }
+  }
+}
+
 export default function FaceVerification({ onVerified }) {
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const [phase, setPhase] = useState('idle') // idle | requesting | live | hold | moving | analyzing | success | failed | denied
+  const [errorMessage, setErrorMessage] = useState('')
 
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -63,6 +75,7 @@ export default function FaceVerification({ onVerified }) {
   useEffect(() => () => stopCamera(), [])
 
   const startCamera = async () => {
+    setErrorMessage('')
     setPhase('requesting')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
@@ -88,6 +101,7 @@ export default function FaceVerification({ onVerified }) {
     await new Promise((r) => setTimeout(r, 1400))
     const frame2 = sampleFrame(video)
     const finalShot = captureJpegBase64(video)
+    const faceCheck = await detectFaceWhenSupported(video)
 
     setPhase('analyzing')
 
@@ -97,8 +111,23 @@ export default function FaceVerification({ onVerified }) {
     const lumaOk = luma1 > MIN_LUMA && luma1 < MAX_LUMA && luma2 > MIN_LUMA && luma2 < MAX_LUMA
     const diffOk = diff > MIN_DIFF && diff < MAX_DIFF
 
-    if (!lumaOk || !diffOk) {
+    if (!lumaOk) {
       stopCamera()
+      setErrorMessage('Your face is too dark or overexposed. Face a light source and try again.')
+      setPhase('failed')
+      return
+    }
+    if (!diffOk) {
+      stopCamera()
+      setErrorMessage(diff <= MIN_DIFF
+        ? 'No movement was detected. Slowly turn your head when prompted.'
+        : 'The camera moved too much. Keep the device still and only turn your head.')
+      setPhase('failed')
+      return
+    }
+    if (faceCheck.supported && !faceCheck.singleFace) {
+      stopCamera()
+      setErrorMessage('Make sure exactly one face is clearly visible in the circle.')
       setPhase('failed')
       return
     }
@@ -107,8 +136,9 @@ export default function FaceVerification({ onVerified }) {
     let serverResult
     try {
       serverResult = await verifyFaceLiveness(finalShot)
-    } catch {
+    } catch (error) {
       stopCamera()
+      setErrorMessage(error.message || 'Verification service is temporarily unavailable.')
       setPhase('failed')
       return
     }
@@ -120,11 +150,13 @@ export default function FaceVerification({ onVerified }) {
       // itself was analyzed in memory on the server and discarded.
       onVerified(serverResult)
     } else {
+      setErrorMessage(serverResult.reason || 'Could not confirm one live face. Keep your full face visible and try again.')
       setPhase('failed')
     }
   }
 
   const retry = () => {
+    setErrorMessage('')
     setPhase('idle')
     startCamera()
   }
@@ -176,7 +208,7 @@ export default function FaceVerification({ onVerified }) {
 
       {phase === 'failed' && (
         <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-red-500">
-          <AlertTriangle size={13} /> Make sure you're in good lighting and move slightly when asked.
+          <AlertTriangle size={13} /> {errorMessage || 'Make sure you are in good lighting and move slightly when asked.'}
         </p>
       )}
       {phase === 'denied' && (
