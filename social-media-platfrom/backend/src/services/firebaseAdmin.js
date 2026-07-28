@@ -9,10 +9,12 @@ function credentialFromEnvironment() {
   return undefined
 }
 
-const app = getApps()[0] || initializeApp({
+const credential = credentialFromEnvironment()
+const appOptions = {
   projectId: process.env.FIREBASE_PROJECT_ID || 'social-media-platform-57498',
-  credential: credentialFromEnvironment(),
-})
+  ...(credential ? { credential } : {}),
+}
+const app = getApps()[0] || initializeApp(appOptions)
 
 export const firebaseAdminAuth = getAuth(app)
 export const firebaseRevocationChecksEnabled = Boolean(

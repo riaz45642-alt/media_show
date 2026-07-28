@@ -34,6 +34,15 @@ app.use((req, res, next) => {
   next()
 })
 
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'Media Show API',
+    message: 'Backend is running. Open the frontend at http://localhost:5173.',
+    health: '/api/health',
+  })
+})
+
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'Media Show API' }))
 
 app.use('/api/auth', authRoutes)

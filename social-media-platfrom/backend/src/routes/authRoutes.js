@@ -27,6 +27,7 @@ router.post(
   requireAuth,
   validateBody({
     imageBase64: { required: true, type: 'string', maxLength: 3_000_000 },
+    imageBase64Second: { required: true, type: 'string', maxLength: 3_000_000 },
     imageMimeType: { type: 'string', maxLength: 60 },
   }),
   verifyFace

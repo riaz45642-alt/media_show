@@ -38,8 +38,10 @@ const SPAM_WINDOW_MS = 60_000
 const SPAM_MAX_IN_WINDOW = 8
 
 function containsAny(text, list) {
-  const lower = text.toLowerCase()
-  return list.filter((w) => lower.includes(w))
+  return list.filter((term) => {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+    return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, 'iu').test(text)
+  })
 }
 
 function countEmojis(text) {

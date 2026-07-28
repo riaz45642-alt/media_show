@@ -15,7 +15,7 @@ const SAFETY_SETTINGS = [
   'HARM_CATEGORY_HATE_SPEECH',
   'HARM_CATEGORY_SEXUALLY_EXPLICIT',
   'HARM_CATEGORY_DANGEROUS_CONTENT',
-].map((category) => ({ category, threshold: 'BLOCK_LOW_AND_ABOVE' }))
+].map((category) => ({ category, threshold: 'BLOCK_MEDIUM_AND_ABOVE' }))
 
 const CATEGORIES = [
   'toxicity', 'hate_speech', 'harassment', 'bullying', 'violence',
@@ -31,7 +31,12 @@ Analyze the provided content and return ONLY a JSON object (no markdown, no pros
   "primary_concern": "string or null",
   "explanation": "one short sentence"
 }
-Higher scores mean more severe/unsafe. Consider sarcasm, context, and reclaimed language rather than flagging on keywords alone.`
+Higher scores mean more severe/unsafe. Consider sarcasm, context, and reclaimed language rather than flagging on keywords alone.
+Calibration requirements:
+- Ordinary greetings, names, introductions, neutral conversation, and benign everyday language are safe.
+- "Hello", "Ahmed", "Hi there", and similar harmless text must score 0-5 overall with no primary concern.
+- Do not infer sexual, violent, or hateful meaning when it is not explicitly present.
+- A non-null primary concern must correspond to a category score of at least 31.`
 
 function emptyResult(reason) {
   return {
@@ -76,12 +81,14 @@ function safetyBlockedResult(data) {
     const category = categoryMap[rating.category]
     if (category) categories[category] = rating.blocked ? 95 : 75
   }
+  const highest = Math.max(...Object.values(categories))
+  if (highest === 0) return emptyResult(`gemini_blocked_${promptBlocked || candidate?.finishReason || 'unknown'}`)
   return {
     available: true,
     reason: 'gemini_safety_block',
     categories,
-    overall_score: 95,
-    primary_concern: Object.entries(categories).sort((a, b) => b[1] - a[1])[0]?.[0] || 'unsafe_content',
+    overall_score: highest,
+    primary_concern: Object.entries(categories).sort((a, b) => b[1] - a[1])[0]?.[0] || null,
     explanation: 'Content was blocked by the provider safety filters.',
   }
 }
@@ -172,14 +179,17 @@ export async function analyzeImageWithGemini(image) {
   ])
 }
 
-const FACE_SYSTEM_INSTRUCTION = `You assist a live face-liveness check for account signup on a teen-safe social app.
+const FACE_SYSTEM_INSTRUCTION = `You analyze two sequential camera frames captured about 1.4 seconds apart for a liveness check.
 You are NOT performing identity recognition and must NEVER guess or report age, gender, ethnicity, or name.
-Look only at whether the image plausibly shows a real live person in front of a camera right now.
+Confirm that exactly one clearly visible face appears in both frames, that lighting and sharpness are adequate,
+and that the person's head pose changed slightly between frames while the scene remains consistent.
+Reject blank frames, obscured faces, multiple faces, screen/photo replays, or frames without a meaningful pose change.
 Return ONLY a JSON object (no markdown, no prose) with this exact shape:
 {
   "face_present": true|false,
   "single_face": true|false,
-  "likely_live_camera_capture": true|false,
+  "face_clear": true|false,
+  "pose_changed": true|false,
   "likely_photo_of_photo_or_screen": true|false,
   "confidence": 0-100,
   "explanation": "one short sentence, no demographic guesses"
@@ -191,7 +201,8 @@ function emptyFaceResult(reason) {
     reason,
     face_present: false,
     single_face: false,
-    likely_live_camera_capture: false,
+    face_clear: false,
+    pose_changed: false,
     likely_photo_of_photo_or_screen: false,
     confidence: 0,
     explanation: reason,
@@ -205,7 +216,8 @@ function parseFaceJson(text) {
     available: true,
     face_present: !!parsed.face_present,
     single_face: !!parsed.single_face,
-    likely_live_camera_capture: !!parsed.likely_live_camera_capture,
+    face_clear: !!parsed.face_clear,
+    pose_changed: !!parsed.pose_changed,
     likely_photo_of_photo_or_screen: !!parsed.likely_photo_of_photo_or_screen,
     confidence: Number(parsed.confidence) || 0,
     explanation: parsed.explanation || '',
@@ -219,7 +231,7 @@ function parseFaceJson(text) {
  * @param {{ base64, mimeType }} image
  */
 export async function analyzeFaceLiveness(image) {
-  if (!image?.base64) return emptyFaceResult('no_image')
+  if (!image?.base64 || !image?.secondBase64) return emptyFaceResult('two_frames_required')
   if (!GEMINI_API_KEY) return emptyFaceResult('gemini_api_key_not_configured')
 
   const controller = new AbortController()
@@ -234,8 +246,11 @@ export async function analyzeFaceLiveness(image) {
         contents: [{
           role: 'user',
           parts: [
-            { text: 'Assess this camera frame for the liveness check.' },
+            { text: 'Frame 1 (before the prompted head turn):' },
             { inline_data: { mime_type: image.mimeType || 'image/jpeg', data: image.base64 } },
+            { text: 'Frame 2 (after the prompted head turn):' },
+            { inline_data: { mime_type: image.mimeType || 'image/jpeg', data: image.secondBase64 } },
+            { text: 'Compare both frames and return the liveness assessment.' },
           ],
         }],
         safetySettings: SAFETY_SETTINGS,

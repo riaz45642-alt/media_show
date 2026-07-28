@@ -61,6 +61,10 @@ export default function CreatePostModal({ open, onClose }) {
   const publish = async () => {
     setError('')
     const result = await check({ text, image: media[0]?.file })
+    if (result.serviceUnavailable) {
+      setError('Content review is temporarily unavailable. Please try again shortly.')
+      return
+    }
     if (!result.safe) {
       setError(t('content_flagged'))
       return

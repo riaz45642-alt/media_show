@@ -96,6 +96,7 @@ export default function FaceVerification({ onVerified }) {
     setPhase('hold')
     await new Promise((r) => setTimeout(r, 1200))
     const frame1 = sampleFrame(video)
+    const firstShot = captureJpegBase64(video)
 
     setPhase('moving')
     await new Promise((r) => setTimeout(r, 1400))
@@ -135,7 +136,7 @@ export default function FaceVerification({ onVerified }) {
     // Stage 2: server-side Gemini vision check on the final frame only.
     let serverResult
     try {
-      serverResult = await verifyFaceLiveness(finalShot)
+      serverResult = await verifyFaceLiveness(firstShot, finalShot)
     } catch (error) {
       stopCamera()
       setErrorMessage(error.message || 'Verification service is temporarily unavailable.')

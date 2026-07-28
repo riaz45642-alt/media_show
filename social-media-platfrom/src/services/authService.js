@@ -40,24 +40,18 @@ function storeSession({ user, token }) {
   return user
 }
 
-export async function verifyFaceLiveness(imageBase64) {
-  const firebaseOnly = Boolean(getStoredUser()?._firebaseOnly)
-  if (!backendIsUsableFromThisPage() && firebaseOnly) {
-    return { verified: true, degraded: true, method: 'device_liveness', verifiedAt: new Date().toISOString() }
+export async function verifyFaceLiveness(firstFrameBase64, secondFrameBase64) {
+  if (!backendIsUsableFromThisPage()) {
+    throw new Error('Face verification requires the deployed API. Configure VITE_API_URL with your backend HTTPS URL.')
   }
-
-  let data
-  try {
-    data = await request('/auth/verify-face', {
-      method: 'POST',
-      body: JSON.stringify({ imageBase64, imageMimeType: 'image/jpeg' }),
-    })
-  } catch (error) {
-    if (!error.status && firebaseOnly) {
-      return { verified: true, degraded: true, method: 'device_liveness', verifiedAt: new Date().toISOString() }
-    }
-    throw error
-  }
+  const data = await request('/auth/verify-face', {
+    method: 'POST',
+    body: JSON.stringify({
+      imageBase64: firstFrameBase64,
+      imageBase64Second: secondFrameBase64,
+      imageMimeType: 'image/jpeg',
+    }),
+  })
   if (data.verified) updateStoredUser({ face_verified: true, faceVerified: true, face_verified_at: data.verifiedAt })
   return data
 }

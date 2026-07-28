@@ -5,6 +5,7 @@ import { generateToken } from '../utils/generateToken.js'
 import { validateDisplayName } from '../services/ruleBasedFilter.js'
 import { analyzeFaceLiveness } from '../services/geminiService.js'
 import { firebaseAdminAuth, firebaseRevocationChecksEnabled } from '../services/firebaseAdmin.js'
+import { evaluateFaceVerification } from '../services/faceVerificationDecision.js'
 
 const ALLOWED_GENDERS = new Set(['male', 'female', 'other', ''])
 
@@ -16,8 +17,12 @@ function ageGroupFor(age) {
 
 export async function verifyFace(req, res, next) {
   try {
-    const { imageBase64, imageMimeType } = req.body
-    const result = await analyzeFaceLiveness({ base64: imageBase64, mimeType: imageMimeType })
+    const { imageBase64, imageBase64Second, imageMimeType } = req.body
+    const result = await analyzeFaceLiveness({
+      base64: imageBase64,
+      secondBase64: imageBase64Second,
+      mimeType: imageMimeType,
+    })
     if (!result.available) {
       return res.status(503).json({
         verified: false,
@@ -26,16 +31,12 @@ export async function verifyFace(req, res, next) {
       })
     }
 
-    const passed =
-      result.face_present &&
-      result.single_face &&
-      !result.likely_photo_of_photo_or_screen &&
-      result.confidence >= 45
-
-    if (!passed) {
+    const decision = evaluateFaceVerification(result)
+    if (!decision.verified) {
       return res.status(422).json({
         verified: false,
-        reason: result.explanation || 'Could not confirm a live face in frame.',
+        code: decision.code,
+        reason: decision.reason,
       })
     }
 
@@ -109,8 +110,8 @@ export async function signup(req, res, next) {
       await client.query('INSERT INTO user_verification_status (user_id) VALUES ($1)', [user.id])
       await client.query(
         `INSERT INTO auth_identities (user_id, provider, provider_subject, provider_email)
-         VALUES ($1, 'password', $2, $2)`,
-        [user.id, email.toLowerCase()]
+         VALUES ($1, 'password', $2, $3)`,
+        [user.id, email.toLowerCase(), email.toLowerCase()]
       )
       await client.query('COMMIT')
     } catch (error) {
