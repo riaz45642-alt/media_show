@@ -1,98 +1,124 @@
-// Auth layer: tries the real backend first (real signup/login/face
-// verification against Postgres + Gemini), and falls back to a local demo
-// mode if the backend is unreachable, so the UI keeps working either way —
-// same resilience pattern as src/services/moderationService.js.
 const STORAGE_KEY = 'mediashow_user'
 const TOKEN_KEY = 'mediashow_token'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true'
 
-// POST the final liveness frame to the backend for a Gemini-backed check.
-// Returns { verified, token? , reason? }. Fails open with a locally-marked
-// "degraded" pass if the backend can't be reached at all (pure demo mode),
-// so the signup flow never gets stuck when no backend is running.
-export async function verifyFaceLiveness(imageBase64) {
+function backendIsUsableFromThisPage() {
   try {
-    const res = await fetch(`${API_URL}/auth/verify-face`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageBase64, imageMimeType: 'image/jpeg' }),
-    })
-    const data = await res.json()
-    if (!res.ok) return { verified: false, reason: data?.message }
-    return data
+    const api = new URL(API_URL, window.location.origin)
+    const apiIsLocal = ['localhost', '127.0.0.1'].includes(api.hostname)
+    const pageIsLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+    return !apiIsLocal || pageIsLocal
   } catch {
-    return { verified: true, degraded: true, token: null, reason: 'backend_unreachable' }
+    return false
   }
 }
 
+async function request(path, options = {}) {
+  const token = localStorage.getItem(TOKEN_KEY)
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(data.message || 'Something went wrong. Please try again.')
+    error.code = data.code
+    error.status = response.status
+    throw error
+  }
+  return data
+}
+
+function storeSession({ user, token }) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+  if (token) localStorage.setItem(TOKEN_KEY, token)
+  return user
+}
+
+export async function verifyFaceLiveness(imageBase64) {
+  const data = await request('/auth/verify-face', {
+    method: 'POST',
+    body: JSON.stringify({ imageBase64, imageMimeType: 'image/jpeg' }),
+  })
+  if (data.verified) updateStoredUser({ face_verified: true, faceVerified: true, face_verified_at: data.verifiedAt })
+  return data
+}
+
 export async function signup(userData) {
+  if (!backendIsUsableFromThisPage()) {
+    const { signupWithFirebase } = await import('./firebaseEmailAuth.js')
+    return storeSession(await signupWithFirebase(userData))
+  }
   try {
-    const res = await fetch(`${API_URL}/auth/signup`, {
+    return storeSession(await request('/auth/signup', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: userData.name,
         email: userData.email,
         password: userData.password,
         age: Number(userData.age),
         gender: userData.gender || '',
-        faceToken: userData.faceToken || '',
       }),
-    })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data?.message || 'signup_failed')
-
-    const user = { ...data.user, safeZoneScore: data.user.safe_zone_score ?? 82, badges: ['Newcomer'] }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
-    localStorage.setItem(TOKEN_KEY, data.token)
-    return user
-  } catch (err) {
-    // Demo fallback (no backend running, or faceToken missing in degraded
-    // mode) — keeps the local-only flow that previously shipped intact.
-    const user = {
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      safeZoneScore: 82,
-      badges: ['Newcomer'],
-      ...userData,
-      _demoMode: err.message !== 'signup_failed' ? true : undefined,
+    }))
+  } catch (error) {
+    if (!error.status) {
+      const { signupWithFirebase } = await import('./firebaseEmailAuth.js')
+      return storeSession(await signupWithFirebase(userData))
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
-    return user
+    if (!DEMO_MODE || error.status) throw error
+    return storeSession({
+      user: {
+        id: crypto.randomUUID(), name: userData.name, email: userData.email,
+        age: Number(userData.age), gender: userData.gender, face_verified: false,
+        safeZoneScore: 82, createdAt: new Date().toISOString(), _demoMode: true,
+      },
+    })
   }
 }
 
-export async function login({ email, password }) {
-  try {
-    const res = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data?.message || 'login_failed')
-
-    const user = { ...data.user, safeZoneScore: data.user.safe_zone_score ?? 82, badges: ['Newcomer'] }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
-    localStorage.setItem(TOKEN_KEY, data.token)
-    return user
-  } catch {
-    const existing = getStoredUser()
-    if (existing && existing.email === email) return existing
-    // demo fallback so login "works" even without a prior signup / backend
-    const user = {
-      id: crypto.randomUUID(),
-      name: email.split('@')[0] || 'Explorer',
-      email,
-      age: 16,
-      avatar: '',
-      safeZoneScore: 82,
-      badges: ['Newcomer'],
-      createdAt: new Date().toISOString(),
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
-    return user
+export async function login(credentials) {
+  if (!backendIsUsableFromThisPage()) {
+    const { loginWithFirebase } = await import('./firebaseEmailAuth.js')
+    return storeSession(await loginWithFirebase(credentials))
   }
+  try {
+    return storeSession(await request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    }))
+  } catch (error) {
+    if (!error.status) {
+      const { loginWithFirebase } = await import('./firebaseEmailAuth.js')
+      return storeSession(await loginWithFirebase(credentials))
+    }
+    if (!DEMO_MODE || error.status) throw error
+    return storeSession({
+      user: {
+        id: crypto.randomUUID(), name: credentials.email.split('@')[0], email: credentials.email,
+        age: 18, face_verified: false, safeZoneScore: 82, _demoMode: true,
+      },
+    })
+  }
+}
+
+// A provider adapter keeps the UI independent of Firebase. Configure a
+// Firebase adapter once at app startup; it must resolve to { user, token }.
+let googleProvider = null
+export function configureGoogleAuth(provider) {
+  googleProvider = provider
+}
+
+export async function continueWithGoogle() {
+  if (!googleProvider) {
+    await import('./firebaseGoogleAuth.js')
+  }
+  if (!googleProvider) throw new Error('Google sign-in could not be initialized.')
+  return storeSession(await googleProvider.signIn())
 }
 
 export function logout() {
@@ -110,8 +136,7 @@ export function getStoredUser() {
 }
 
 export function updateStoredUser(patch) {
-  const current = getStoredUser() || {}
-  const updated = { ...current, ...patch }
+  const updated = { ...(getStoredUser() || {}), ...patch }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
   return updated
 }

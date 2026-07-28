@@ -1,29 +1,29 @@
+import crypto from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { pool } from '../config/db.js'
-import { generateToken, generateFaceVerificationToken, verifyFaceVerificationToken } from '../utils/generateToken.js'
+import { generateToken } from '../utils/generateToken.js'
 import { validateDisplayName } from '../services/ruleBasedFilter.js'
 import { analyzeFaceLiveness } from '../services/geminiService.js'
+import { firebaseAdminAuth, firebaseRevocationChecksEnabled } from '../services/firebaseAdmin.js'
 
 const ALLOWED_GENDERS = new Set(['male', 'female', 'other', ''])
 
-// POST /api/auth/verify-face — analyzes one live camera frame with Gemini
-// vision purely for a face-present/liveness signal (never age, gender, or
-// identity). The frame is used in-memory for this single check only; it is
-// never persisted or logged. On success, returns a 10-minute token that
-// signup() requires, so an account can only be created after this passed.
+function ageGroupFor(age) {
+  if (age < 13) return 'kids'
+  if (age < 18) return 'teen'
+  return 'adult'
+}
+
 export async function verifyFace(req, res, next) {
   try {
     const { imageBase64, imageMimeType } = req.body
-    if (!imageBase64) return res.status(400).json({ verified: false, message: 'imageBase64 is required' })
-
     const result = await analyzeFaceLiveness({ base64: imageBase64, mimeType: imageMimeType })
-
     if (!result.available) {
-      // Gemini unreachable/unconfigured — don't hard-block signup on an
-      // infra hiccup; the client-side liveness heuristic already ran before
-      // this call, so fail open with a clearly-marked degraded pass and
-      // still issue a token so signup can proceed.
-      return res.json({ verified: true, degraded: true, reason: result.reason, token: generateFaceVerificationToken() })
+      return res.status(503).json({
+        verified: false,
+        code: 'VERIFICATION_PROVIDER_UNAVAILABLE',
+        message: 'Verification is temporarily unavailable. Please try again shortly.',
+      })
     }
 
     const passed =
@@ -34,29 +34,46 @@ export async function verifyFace(req, res, next) {
       result.confidence >= 55
 
     if (!passed) {
-      return res.json({
+      return res.status(422).json({
         verified: false,
         reason: result.explanation || 'Could not confirm a live face in frame.',
       })
     }
 
-    const token = generateFaceVerificationToken()
-    res.json({ verified: true, token })
-  } catch (err) {
-    next(err)
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      const { rows } = await client.query(
+        `INSERT INTO verification_sessions
+           (user_id, status, provider, attempt_count, risk_score, verified_at, expires_at)
+         VALUES ($1, 'verified', 'liveness', 1, $2, now(), now() + interval '10 minutes')
+         RETURNING id, verified_at`,
+        [req.user.id, Math.max(0, 100 - (result.confidence || 0))]
+      )
+      await client.query(
+        `INSERT INTO user_verification_status (user_id, status, verified_session_id, verified_at)
+         VALUES ($1, 'verified', $2, $3)
+         ON CONFLICT (user_id) DO UPDATE SET
+           status = 'verified', verified_session_id = EXCLUDED.verified_session_id,
+           verified_at = EXCLUDED.verified_at, revoked_at = NULL, updated_at = now()`,
+        [req.user.id, rows[0].id, rows[0].verified_at]
+      )
+      await client.query('COMMIT')
+      res.json({ verified: true, verifiedAt: rows[0].verified_at })
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    next(error)
   }
-}
-
-function ageGroupFor(age) {
-  if (age < 13) return 'kids'
-  if (age < 18) return 'teen'
-  return 'adult'
 }
 
 export async function signup(req, res, next) {
   try {
-    const { name, email, password, age, avatarUrl, gender, faceToken } = req.body
-
+    const { name, email, password, age, gender } = req.body
     const usernameCheck = validateDisplayName(name)
     if (!usernameCheck.valid) {
       return res.status(422).json({
@@ -66,53 +83,169 @@ export async function signup(req, res, next) {
       })
     }
 
-    if (!faceToken) {
-      return res.status(422).json({ message: 'Face verification is required before signup.' })
-    }
-    try {
-      verifyFaceVerificationToken(faceToken)
-    } catch {
-      return res.status(422).json({ message: 'Face verification expired or is invalid. Please verify again.' })
-    }
-
-    // Gender, if provided, is saved exactly as the user chose it — face
-    // verification above only confirms liveness and never touches this field.
-    const safeGender = ALLOWED_GENDERS.has(gender) ? (gender || null) : null
-
-    const passwordHash = await bcrypt.hash(password, 10)
+    const passwordHash = await bcrypt.hash(password, 12)
     const ageGroup = ageGroupFor(Number(age))
+    const safeGender = ALLOWED_GENDERS.has(gender) ? (gender || null) : null
+    const usernameBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24) || 'member'
+    const username = `${usernameBase}_${crypto.randomUUID().slice(0, 6)}`
+    const birthDate = new Date()
+    birthDate.setUTCFullYear(birthDate.getUTCFullYear() - Number(age))
 
-    const { rows } = await pool.query(
-      `INSERT INTO users (name, email, password_hash, age, age_group, avatar_url, gender, face_verified, face_verified_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,true,now()) RETURNING id, name, email, age, age_group, avatar_url, gender, face_verified`,
-      [name, email.toLowerCase(), passwordHash, age, ageGroup, avatarUrl || null, safeGender]
-    )
-    const user = rows[0]
-    const token = generateToken({ id: user.id })
-    res.status(201).json({ user, token })
-  } catch (err) {
-    // Postgres unique_violation — surface a clear message instead of a 500.
-    if (err.code === '23505') {
+    const client = await pool.connect()
+    let user
+    try {
+      await client.query('BEGIN')
+      const { rows } = await client.query(
+        `INSERT INTO users (email, password_hash) VALUES ($1, $2)
+         RETURNING id, email, role, status, created_at`,
+        [email.toLowerCase(), passwordHash]
+      )
+      user = rows[0]
+      await client.query(
+        `INSERT INTO user_profiles (user_id, username, display_name, date_of_birth, age_group, gender)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [user.id, username, name, birthDate.toISOString().slice(0, 10), ageGroup, safeGender]
+      )
+      await client.query('INSERT INTO user_settings (user_id) VALUES ($1)', [user.id])
+      await client.query('INSERT INTO user_verification_status (user_id) VALUES ($1)', [user.id])
+      await client.query(
+        `INSERT INTO auth_identities (user_id, provider, provider_subject, provider_email)
+         VALUES ($1, 'password', $2, $2)`,
+        [user.id, email.toLowerCase()]
+      )
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+
+    user = { ...user, name, username, age: Number(age), age_group: ageGroup, gender: safeGender, face_verified: false }
+    res.status(201).json({ user, token: generateToken({ id: user.id }) })
+  } catch (error) {
+    if (error.code === '23505') {
       return res.status(409).json({ message: 'An account with this email already exists' })
     }
-    next(err)
+    next(error)
   }
 }
 
 export async function login(req, res, next) {
   try {
     const { email, password } = req.body
-    const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()])
+    const { rows } = await pool.query(
+      `SELECT u.*, p.display_name AS name, p.username, p.date_of_birth, p.age_group, p.gender,
+              p.bio, p.safe_zone_score,
+              (v.status = 'verified' AND v.revoked_at IS NULL
+                AND (v.reverify_after IS NULL OR v.reverify_after > now())) AS face_verified,
+              v.verified_at AS face_verified_at
+       FROM users u
+       JOIN user_profiles p ON p.user_id = u.id
+       LEFT JOIN user_verification_status v ON v.user_id = u.id
+       WHERE u.email = $1 AND u.deleted_at IS NULL`,
+      [email.toLowerCase()]
+    )
     const user = rows[0]
-    if (!user) return res.status(401).json({ message: 'Invalid credentials' })
+    if (!user || user.status !== 'active') return res.status(401).json({ message: 'Invalid credentials' })
+    if (!user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
+      return res.status(401).json({ message: 'Invalid credentials' })
+    }
 
-    const valid = await bcrypt.compare(password, user.password_hash)
-    if (!valid) return res.status(401).json({ message: 'Invalid credentials' })
-
-    const token = generateToken({ id: user.id })
     delete user.password_hash
-    res.json({ user, token })
-  } catch (err) {
-    next(err)
+    user.age = user.date_of_birth
+      ? Math.floor((Date.now() - new Date(user.date_of_birth).getTime()) / 31557600000)
+      : null
+    await pool.query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id])
+    res.json({ user, token: generateToken({ id: user.id }) })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function firebaseLogin(req, res, next) {
+  try {
+    const decoded = await firebaseAdminAuth.verifyIdToken(req.body.idToken, firebaseRevocationChecksEnabled)
+    if (!decoded.email || decoded.email_verified !== true) {
+      return res.status(401).json({ message: 'Google did not provide a verified email address.' })
+    }
+
+    const email = decoded.email.toLowerCase()
+    const name = String(decoded.name || email.split('@')[0] || 'Member').trim().slice(0, 120)
+    const usernameBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24) || 'member'
+    const client = await pool.connect()
+    let userId
+
+    try {
+      await client.query('BEGIN')
+      const existing = await client.query(
+        `SELECT id, status FROM users WHERE email = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [email]
+      )
+
+      if (existing.rows[0]) {
+        if (existing.rows[0].status !== 'active') {
+          await client.query('ROLLBACK')
+          return res.status(403).json({ message: 'This account is not currently active.' })
+        }
+        userId = existing.rows[0].id
+        await client.query(
+          `UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()), last_login_at = now()
+           WHERE id = $1`,
+          [userId]
+        )
+      } else {
+        const inserted = await client.query(
+          `INSERT INTO users (email, email_verified_at, last_login_at)
+           VALUES ($1, now(), now()) RETURNING id`,
+          [email]
+        )
+        userId = inserted.rows[0].id
+        const username = `${usernameBase}_${crypto.randomUUID().slice(0, 6)}`
+        await client.query(
+          `INSERT INTO user_profiles (user_id, username, display_name, age_group)
+           VALUES ($1, $2, $3, 'adult')`,
+          [userId, username, name]
+        )
+        await client.query('INSERT INTO user_settings (user_id) VALUES ($1)', [userId])
+        await client.query('INSERT INTO user_verification_status (user_id) VALUES ($1)', [userId])
+      }
+
+      await client.query(
+        `INSERT INTO auth_identities
+           (user_id, provider, provider_subject, provider_email, metadata, last_used_at)
+         VALUES ($1, 'google', $2, $3, $4::jsonb, now())
+         ON CONFLICT (provider, provider_subject) DO UPDATE SET
+           provider_email = EXCLUDED.provider_email,
+           metadata = EXCLUDED.metadata,
+           last_used_at = now()`,
+        [userId, decoded.uid, email, JSON.stringify({ picture: decoded.picture || null })]
+      )
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+
+    const { rows } = await pool.query(
+      `SELECT u.id, u.email, u.role, u.status, u.created_at,
+              p.display_name AS name, p.username, p.date_of_birth, p.age_group, p.gender,
+              p.bio, p.safe_zone_score, $2::text AS avatar,
+              (v.status = 'verified' AND v.revoked_at IS NULL
+                AND (v.reverify_after IS NULL OR v.reverify_after > now())) AS face_verified,
+              v.verified_at AS face_verified_at
+       FROM users u JOIN user_profiles p ON p.user_id = u.id
+       LEFT JOIN user_verification_status v ON v.user_id = u.id
+       WHERE u.id = $1`,
+      [userId, decoded.picture || null]
+    )
+    res.json({ user: rows[0], token: generateToken({ id: userId }) })
+  } catch (error) {
+    if (error.code?.startsWith('auth/')) {
+      return res.status(401).json({ message: 'Google sign-in token is invalid or expired.' })
+    }
+    next(error)
   }
 }

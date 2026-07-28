@@ -229,9 +229,9 @@ export default function AdminModeration() {
                   <span>{a.user_name} &lt;{a.user_email}&gt;</span>
                 </div>
                 <p className="mb-1 text-xs text-neutral-500">
-                  Original status: <strong>{a.original_status}</strong> · AI risk score: {a.risk_score ?? 0}
+                  Original status: <strong>{a.original_status}</strong> · Review score: {a.risk_score ?? 0}
                 </p>
-                {a.ai_reason && <p className="mb-2 text-xs text-amber-600">AI reason: {a.ai_reason}</p>}
+                {a.ai_reason && <p className="mb-2 text-xs text-amber-600">Automated review: {a.ai_reason}</p>}
                 <p className="mb-2 text-sm">User explanation: {a.explanation}</p>
                 {a.moderator_note && <p className="mb-2 text-xs text-neutral-500">Note on file: {a.moderator_note}</p>}
 

@@ -89,13 +89,13 @@ export default function Appeals() {
                       {post.moderation_status === 'rejected' ? 'Rejected' : 'Flagged'}
                     </span>
                     {post.risk_score != null && (
-                      <span className="text-[11px] text-gray-400">AI risk score: {post.risk_score}/100</span>
+                      <span className="text-[11px] text-gray-400">Review score: {post.risk_score}/100</span>
                     )}
                   </div>
                   <p className="text-sm text-gray-700 dark:text-gray-200 mb-1.5">{post.text}</p>
                   {post.moderation_reason && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                      AI moderation reason: {post.moderation_reason}
+                      Review reason: {post.moderation_reason}
                     </p>
                   )}
 

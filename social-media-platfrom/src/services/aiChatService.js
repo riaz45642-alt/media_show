@@ -1,4 +1,4 @@
-// Talks to the backend's Gemini-powered "Media Show AI" assistant. Falls back
+// Talks to the backend service used by the in-app Help Guide. Falls back
 // to a friendly offline message if the backend can't be reached, matching
 // the resilience pattern used by moderationService.js / authService.js.
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
@@ -19,6 +19,6 @@ export async function askMediaShowAI(message, history = []) {
     if (!res.ok) throw new Error(data?.message || 'ai_chat_failed')
     return data.reply
   } catch {
-    return "Media Show AI is offline right now (backend not reachable). Please try again once it's running."
+    return "The Help Guide is offline right now. Please try again later."
   }
 }

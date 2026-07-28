@@ -4,7 +4,11 @@ import { moderate } from '../services/moderationService.js'
 export async function listPosts(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM posts WHERE moderation_status = 'safe' ORDER BY created_at DESC LIMIT 50`
+      `SELECT p.*, p.author_id AS user_id, p.body AS text_content,
+              p.like_count AS likes_count, up.display_name AS author
+       FROM posts p JOIN user_profiles up ON up.user_id = p.author_id
+       WHERE p.moderation_status = 'safe' AND p.deleted_at IS NULL
+       ORDER BY p.published_at DESC NULLS LAST, p.created_at DESC LIMIT 50`
     )
     res.json(rows)
   } catch (err) {
@@ -14,23 +18,21 @@ export async function listPosts(req, res, next) {
 
 export async function createPost(req, res, next) {
   try {
-    const { text, imageUrl, tag, imageBase64, imageMimeType } = req.body
+    const { text, imageBase64, imageMimeType } = req.body
     const image = imageBase64 ? { base64: imageBase64, mimeType: imageMimeType } : undefined
 
     const result = await moderate({ text, image, userId: req.user.id, contentType: 'post' })
 
     const { rows } = await pool.query(
-      `INSERT INTO posts (user_id, text_content, image_url, tag, moderation_status, risk_score, moderation_reason, ai_response)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO posts (author_id, body, moderation_status, risk_score, moderation_reason, published_at)
+       VALUES ($1,$2,$3,$4,$5,CASE WHEN $3 = 'safe' THEN now() ELSE NULL END)
+       RETURNING *, author_id AS user_id, body AS text_content, like_count AS likes_count`,
       [
         req.user.id,
-        text,
-        imageUrl || null,
-        tag || null,
+        text || '',
         result.status,
         result.riskScore,
         result.reason,
-        JSON.stringify(result.ai),
       ]
     )
 

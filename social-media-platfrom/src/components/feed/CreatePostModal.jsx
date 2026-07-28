@@ -5,11 +5,13 @@ import Button from '../ui/Button'
 import { usePosts } from '../../context/PostsContext'
 import { useLanguage } from '../../context/LanguageContext'
 import useModeration from '../../hooks/useModeration'
+import { useVerificationGate } from '../../context/VerificationGateContext'
 
 export default function CreatePostModal({ open, onClose }) {
   const { t } = useLanguage()
   const { addPost } = usePosts()
   const { checking, check } = useModeration()
+  const { requireVerification } = useVerificationGate()
   const fileRef = useRef(null)
 
   const [text, setText] = useState('')
@@ -56,7 +58,7 @@ export default function CreatePostModal({ open, onClose }) {
 
   const canPost = text.trim().length > 0 || media.length > 0
 
-  const handleSubmit = async () => {
+  const publish = async () => {
     setError('')
     const result = await check({ text, image: media[0]?.file })
     if (!result.safe) {
@@ -68,6 +70,8 @@ export default function CreatePostModal({ open, onClose }) {
     reset()
     onClose()
   }
+
+  const handleSubmit = () => requireVerification(publish, media.length ? 'upload media and publish this post' : 'publish this post')
 
   return (
     <Modal open={open} onClose={handleClose} title={t('create_post')}>

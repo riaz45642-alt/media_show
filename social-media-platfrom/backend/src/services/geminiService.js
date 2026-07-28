@@ -4,9 +4,18 @@
 // result rather than throwing, so the rest of the pipeline (rule-based +
 // human review) keeps the platform usable without the key configured.
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
+const MAX_ATTEMPTS = 3
+
+const SAFETY_SETTINGS = [
+  'HARM_CATEGORY_HARASSMENT',
+  'HARM_CATEGORY_HATE_SPEECH',
+  'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+  'HARM_CATEGORY_DANGEROUS_CONTENT',
+].map((category) => ({ category, threshold: 'BLOCK_LOW_AND_ABOVE' }))
 
 const CATEGORIES = [
   'toxicity', 'hate_speech', 'harassment', 'bullying', 'violence',
@@ -40,45 +49,108 @@ function parseModelJson(text) {
   const parsed = JSON.parse(cleaned)
   return {
     available: true,
-    categories: parsed.categories || {},
-    overall_score: Number(parsed.overall_score) || 0,
+    categories: Object.fromEntries(CATEGORIES.map((category) => [
+      category,
+      Math.max(0, Math.min(100, Number(parsed.categories?.[category]) || 0)),
+    ])),
+    overall_score: Math.max(0, Math.min(100, Number(parsed.overall_score) || 0)),
     primary_concern: parsed.primary_concern || null,
     explanation: parsed.explanation || '',
   }
 }
 
+function safetyBlockedResult(data) {
+  const promptBlocked = data?.promptFeedback?.blockReason
+  const candidate = data?.candidates?.[0]
+  if (!promptBlocked && candidate?.finishReason !== 'SAFETY') return null
+
+  const ratings = data?.promptFeedback?.safetyRatings || candidate?.safetyRatings || []
+  const categoryMap = {
+    HARM_CATEGORY_HARASSMENT: 'harassment',
+    HARM_CATEGORY_HATE_SPEECH: 'hate_speech',
+    HARM_CATEGORY_SEXUALLY_EXPLICIT: 'adult_sexual_content',
+    HARM_CATEGORY_DANGEROUS_CONTENT: 'violence',
+  }
+  const categories = Object.fromEntries(CATEGORIES.map((category) => [category, 0]))
+  for (const rating of ratings) {
+    const category = categoryMap[rating.category]
+    if (category) categories[category] = rating.blocked ? 95 : 75
+  }
+  return {
+    available: true,
+    reason: 'gemini_safety_block',
+    categories,
+    overall_score: 95,
+    primary_concern: Object.entries(categories).sort((a, b) => b[1] - a[1])[0]?.[0] || 'unsafe_content',
+    explanation: 'Content was blocked by the provider safety filters.',
+  }
+}
+
+const MODERATION_SCHEMA = {
+  type: 'OBJECT',
+  required: ['categories', 'overall_score', 'primary_concern', 'explanation'],
+  properties: {
+    categories: {
+      type: 'OBJECT',
+      required: CATEGORIES,
+      properties: Object.fromEntries(CATEGORIES.map((category) => [
+        category,
+        { type: 'INTEGER', minimum: 0, maximum: 100 },
+      ])),
+    },
+    overall_score: { type: 'INTEGER', minimum: 0, maximum: 100 },
+    primary_concern: { type: 'STRING', nullable: true },
+    explanation: { type: 'STRING' },
+  },
+}
+
 async function callGemini(parts, timeoutMs = 8000) {
   if (!GEMINI_API_KEY) return emptyResult('gemini_api_key_not_configured')
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const res = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+        signal: controller.signal,
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+          contents: [{ role: 'user', parts }],
+          safetySettings: SAFETY_SETTINGS,
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: 'application/json',
+            responseSchema: MODERATION_SCHEMA,
+            maxOutputTokens: 1200,
+          },
+        }),
+      })
+      if (!res.ok) {
+        if (RETRYABLE_STATUS.has(res.status) && attempt < MAX_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** (attempt - 1))))
+          continue
+        }
+        return emptyResult(`gemini_http_${res.status}`)
+      }
 
-  try {
-    const res = await fetch(`${ENDPOINT}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-        contents: [{ role: 'user', parts }],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-      }),
-    })
-
-    if (!res.ok) {
-      return emptyResult(`gemini_http_${res.status}`)
+      const data = await res.json()
+      const blocked = safetyBlockedResult(data)
+      if (blocked) return blocked
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
+      if (!text) return emptyResult('gemini_empty_response')
+      return parseModelJson(text)
+    } catch (err) {
+      if (attempt === MAX_ATTEMPTS || err.name === 'AbortError') {
+        return emptyResult(err.name === 'AbortError' ? 'gemini_timeout' : 'gemini_call_failed')
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** (attempt - 1))))
+    } finally {
+      clearTimeout(timer)
     }
-
-    const data = await res.json()
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!text) return emptyResult('gemini_empty_response')
-
-    return parseModelJson(text)
-  } catch (err) {
-    return emptyResult(err.name === 'AbortError' ? 'gemini_timeout' : 'gemini_call_failed')
-  } finally {
-    clearTimeout(timer)
   }
+  return emptyResult('gemini_call_failed')
 }
 
 /** Analyze text content for toxicity/hate/harassment/etc. */
@@ -153,9 +225,9 @@ export async function analyzeFaceLiveness(image) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 8000)
   try {
-    const res = await fetch(`${ENDPOINT}?key=${GEMINI_API_KEY}`, {
+    const res = await fetch(ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
       signal: controller.signal,
       body: JSON.stringify({
         system_instruction: { parts: [{ text: FACE_SYSTEM_INSTRUCTION }] },
@@ -166,7 +238,8 @@ export async function analyzeFaceLiveness(image) {
             { inline_data: { mime_type: image.mimeType || 'image/jpeg', data: image.base64 } },
           ],
         }],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+        safetySettings: SAFETY_SETTINGS,
+        generationConfig: { temperature: 0, responseMimeType: 'application/json', maxOutputTokens: 300 },
       }),
     })
     if (!res.ok) return emptyFaceResult(`gemini_http_${res.status}`)

@@ -4,10 +4,12 @@ import Modal from '../ui/Modal'
 import Avatar from '../ui/Avatar'
 import { useLanguage } from '../../context/LanguageContext'
 import { usePosts } from '../../context/PostsContext'
+import { useVerificationGate } from '../../context/VerificationGateContext'
 
 export default function CommentsSheet({ post, open, onClose }) {
   const { t } = useLanguage()
   const { addComment } = usePosts()
+  const { requireVerification } = useVerificationGate()
   const [text, setText] = useState('')
 
   if (!post) return null
@@ -15,8 +17,10 @@ export default function CommentsSheet({ post, open, onClose }) {
   const submit = (e) => {
     e.preventDefault()
     if (!text.trim()) return
-    addComment(post.id, text)
-    setText('')
+    requireVerification(() => {
+      addComment(post.id, text)
+      setText('')
+    }, 'add a comment')
   }
 
   return (

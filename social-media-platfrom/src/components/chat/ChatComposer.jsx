@@ -1,28 +1,34 @@
 import { useRef, useState } from 'react'
 import { Send, Smile, Image as ImageIcon, X, CornerUpLeft } from 'lucide-react'
 import EmojiPicker from './EmojiPicker'
+import { useVerificationGate } from '../../context/VerificationGateContext'
 
 export default function ChatComposer({ onSend, replyTo, onCancelReply }) {
   const [text, setText] = useState('')
   const [emojiOpen, setEmojiOpen] = useState(false)
   const fileInputRef = useRef(null)
+  const { requireVerification } = useVerificationGate()
 
   const send = (e) => {
     e.preventDefault()
     const trimmed = text.trim()
     if (!trimmed) return
     const isLink = /^https?:\/\/\S+$/i.test(trimmed)
-    onSend({ type: isLink ? 'link' : 'text', text: trimmed, replyTo: replyTo?.id || null })
-    setText('')
-    setEmojiOpen(false)
+    requireVerification(() => {
+      onSend({ type: isLink ? 'link' : 'text', text: trimmed, replyTo: replyTo?.id || null })
+      setText('')
+      setEmojiOpen(false)
+    }, 'send a message')
   }
 
   const handleFile = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const url = URL.createObjectURL(file)
-    const isVideo = file.type.startsWith('video/')
-    onSend({ type: isVideo ? 'video' : 'image', mediaUrl: url, replyTo: replyTo?.id || null })
+    requireVerification(() => {
+      const url = URL.createObjectURL(file)
+      const isVideo = file.type.startsWith('video/')
+      onSend({ type: isVideo ? 'video' : 'image', mediaUrl: url, replyTo: replyTo?.id || null })
+    }, 'upload and send media')
     e.target.value = ''
   }
 

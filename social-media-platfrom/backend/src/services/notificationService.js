@@ -6,14 +6,14 @@ import { pool } from '../config/db.js'
 export async function createNotification({ userId, category, type, text, link }) {
   if (!userId) return null
   try {
-    const { rows } = await pool.query('SELECT notification_prefs FROM users WHERE id = $1', [userId])
-    const prefs = rows[0]?.notification_prefs
+    const { rows } = await pool.query('SELECT notification_preferences FROM user_settings WHERE user_id = $1', [userId])
+    const prefs = rows[0]?.notification_preferences
     if (prefs && prefs[category] === false) return null
 
     const { rows: inserted } = await pool.query(
-      `INSERT INTO notifications (user_id, category, type, text, link)
+      `INSERT INTO notifications (recipient_id, kind, title, body, link)
        VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [userId, category, type, text, link || null]
+      [userId, type || category, text.slice(0, 160), text, link || null]
     )
     return inserted[0]
   } catch (err) {

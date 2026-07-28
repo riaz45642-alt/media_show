@@ -5,6 +5,7 @@ import StoryViewerModal from './StoryViewerModal'
 import { USERS } from '../../data/users'
 import { useAuth } from '../../context/AuthContext'
 import { useStories } from '../../context/StoriesContext'
+import { useVerificationGate } from '../../context/VerificationGateContext'
 
 const STORY_USERS = USERS.filter((u) => u.hasStory)
 
@@ -12,6 +13,7 @@ export default function StoriesBar() {
   const { user } = useAuth()
   const { myStories, addStory, hasUnseen, activeEntryId, setActiveEntryId } = useStories()
   const fileRef = useRef(null)
+  const { requireVerification } = useVerificationGate()
 
   const entries = [
     ...(myStories.length ? [{ id: 'me', name: user?.name || 'You', avatar: user?.avatar, color: '#4A90E2' }] : []),
@@ -22,10 +24,12 @@ export default function StoriesBar() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    const type = file.type.startsWith('video') ? 'video' : 'image'
-    const src = URL.createObjectURL(file)
-    addStory({ type, src })
-    setActiveEntryId('me')
+    requireVerification(() => {
+      const type = file.type.startsWith('video') ? 'video' : 'image'
+      const src = URL.createObjectURL(file)
+      addStory({ type, src })
+      setActiveEntryId('me')
+    }, 'publish a story')
   }
 
   return (

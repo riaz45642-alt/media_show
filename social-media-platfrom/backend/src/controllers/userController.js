@@ -9,7 +9,13 @@ function clamp(n) {
 export async function getMe(req, res, next) {
   try {
     const { rows } = await pool.query(
-      'SELECT id, name, email, age, age_group, avatar_url, bio, safe_zone_score, role, status FROM users WHERE id = $1',
+      `SELECT u.id, p.display_name AS name, u.email, p.date_of_birth, p.age_group, p.gender,
+              p.username, p.bio, p.safe_zone_score, u.role, u.status,
+              (v.status = 'verified' AND v.revoked_at IS NULL
+                AND (v.reverify_after IS NULL OR v.reverify_after > now())) AS face_verified
+       FROM users u JOIN user_profiles p ON p.user_id = u.id
+       LEFT JOIN user_verification_status v ON v.user_id = u.id
+       WHERE u.id = $1`,
       [req.user.id]
     )
     res.json(rows[0])
@@ -20,7 +26,7 @@ export async function getMe(req, res, next) {
 
 export async function updateMe(req, res, next) {
   try {
-    const { name, bio, avatarUrl } = req.body
+    const { name, bio } = req.body
 
     if (name) {
       const check = validateDisplayName(name)
@@ -38,25 +44,11 @@ export async function updateMe(req, res, next) {
     }
 
     const { rows } = await pool.query(
-      `UPDATE users SET
-         name = COALESCE($1,name),
-         bio = COALESCE($2,bio),
-         avatar_url = COALESCE($3,avatar_url),
-         moderation_status = COALESCE($4, moderation_status),
-         risk_score = COALESCE($5, risk_score),
-         moderation_reason = COALESCE($6, moderation_reason),
-         updated_at = now()
-       WHERE id = $7
-       RETURNING id, name, email, age, age_group, avatar_url, bio, moderation_status`,
-      [
-        name,
-        bio,
-        avatarUrl,
-        moderation?.status || null,
-        moderation?.riskScore ?? null,
-        moderation?.reason || null,
-        req.user.id,
-      ]
+      `UPDATE user_profiles SET display_name = COALESCE($1, display_name),
+         bio = COALESCE($2, bio), updated_at = now()
+       WHERE user_id = $3
+       RETURNING user_id AS id, display_name AS name, username, date_of_birth, age_group, bio`,
+      [name, bio, req.user.id]
     )
     res.json({ user: rows[0], moderation })
   } catch (err) {
@@ -73,7 +65,10 @@ export async function getReputation(req, res, next) {
     const userId = req.params.id === 'me' ? req.user.id : req.params.id
 
     const { rows: userRows } = await pool.query(
-      `SELECT warnings_count, risk_score, status FROM users WHERE id = $1`,
+      `SELECT p.warnings_count, u.status,
+              COALESCE((SELECT max(risk_score) FROM moderation_cases
+                        WHERE target_type = 'user' AND target_id = u.id), 0) AS risk_score
+       FROM users u JOIN user_profiles p ON p.user_id = u.id WHERE u.id = $1`,
       [userId]
     )
     if (!userRows[0]) return res.status(404).json({ message: 'User not found' })
@@ -85,8 +80,8 @@ export async function getReputation(req, res, next) {
          COUNT(*) FILTER (WHERE moderation_status = 'rejected') AS rejected,
          COUNT(*) FILTER (WHERE moderation_status = 'flagged') AS flagged,
          COUNT(*) AS total,
-         COALESCE(SUM(likes_count), 0) AS total_likes
-       FROM posts WHERE user_id = $1`,
+         COALESCE(SUM(like_count), 0) AS total_likes
+       FROM posts WHERE author_id = $1`,
       [userId]
     )
     const stats = postStats[0]
@@ -141,15 +136,17 @@ export async function getReputation(req, res, next) {
 export async function getModerationHistory(req, res, next) {
   try {
     const { rows: posts } = await pool.query(
-      `SELECT id, 'post' AS content_type, text_content AS preview, moderation_status, risk_score,
-              moderation_reason, created_at, reviewed_at
-       FROM posts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`,
+      `SELECT p.id, 'post' AS content_type, p.body AS preview, p.moderation_status, p.risk_score,
+              p.moderation_reason, p.created_at, mc.reviewed_at
+       FROM posts p LEFT JOIN moderation_cases mc ON mc.target_type = 'post' AND mc.target_id = p.id
+       WHERE p.author_id = $1 ORDER BY p.created_at DESC LIMIT 100`,
       [req.user.id]
     )
     const { rows: comments } = await pool.query(
-      `SELECT id, 'comment' AS content_type, text_content AS preview, moderation_status, risk_score,
-              moderation_reason, created_at, reviewed_at
-       FROM comments WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`,
+      `SELECT c.id, 'comment' AS content_type, c.body AS preview, c.moderation_status, c.risk_score,
+              c.moderation_reason, c.created_at, mc.reviewed_at
+       FROM comments c LEFT JOIN moderation_cases mc ON mc.target_type = 'comment' AND mc.target_id = c.id
+       WHERE c.author_id = $1 ORDER BY c.created_at DESC LIMIT 100`,
       [req.user.id]
     )
     const { rows: appeals } = await pool.query(
@@ -157,7 +154,7 @@ export async function getModerationHistory(req, res, next) {
        WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`,
       [req.user.id]
     )
-    const { rows: userRows } = await pool.query(`SELECT warnings_count FROM users WHERE id = $1`, [req.user.id])
+    const { rows: userRows } = await pool.query(`SELECT warnings_count FROM user_profiles WHERE user_id = $1`, [req.user.id])
 
     const items = [...posts, ...comments].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     res.json({ items, appeals, warningsCount: userRows[0]?.warnings_count || 0 })

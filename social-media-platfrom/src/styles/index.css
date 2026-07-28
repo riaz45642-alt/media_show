@@ -61,6 +61,29 @@ h1,h2,h3,h4,.font-display{ font-family:'Poppins', sans-serif; }
 .dark .soft-card{ background:#161C2C; box-shadow: 0 4px 20px rgba(0,0,0,0.35); }
 .soft-card:hover{ transform: translateY(-4px); box-shadow: 0 14px 34px rgba(74,144,226,0.16); }
 
+.auth-card{
+  background:#fff;
+  border:1px solid rgba(148,163,184,.2);
+  border-radius:1.75rem;
+  padding:1.75rem;
+  box-shadow:0 24px 70px rgba(15,23,42,.10);
+}
+.dark .auth-card{ background:#161C2C; border-color:rgba(255,255,255,.08); }
+.auth-eyebrow{ margin-bottom:.35rem; color:#4A90E2; font-size:.72rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+.google-button{
+  display:flex; width:100%; align-items:center; justify-content:center; gap:.65rem;
+  border:1px solid #dbe2ea; border-radius:1rem; background:#fff; padding:.72rem 1rem;
+  color:#1f2937; font-size:.875rem; font-weight:600; transition:border-color .2s,background .2s,transform .12s;
+}
+.google-button:hover{ border-color:#94a3b8; background:#f8fafc; }
+.google-button:active{ transform:scale(.98); }
+.google-button:disabled{ cursor:not-allowed; opacity:.6; }
+.dark .google-button{ border-color:rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#f3f4f6; }
+.google-mark{ display:grid; height:1.4rem; width:1.4rem; place-items:center; border-radius:50%; color:#4285f4; font-weight:800; }
+.auth-divider{ display:flex; align-items:center; gap:.75rem; margin:1.2rem 0; color:#94a3b8; font-size:.7rem; text-transform:uppercase; letter-spacing:.07em; }
+.auth-divider::before,.auth-divider::after{ content:''; height:1px; flex:1; background:#e2e8f0; }
+.dark .auth-divider::before,.dark .auth-divider::after{ background:rgba(255,255,255,.1); }
+
 /* ---------- Buttons ---------- */
 .btn-press{ transition: transform .15s ease, box-shadow .15s ease; }
 .btn-press:active{ transform: scale(0.95); }

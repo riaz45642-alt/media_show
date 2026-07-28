@@ -5,7 +5,7 @@ import EmptyState from '../components/common/EmptyState'
 import { usePosts } from '../context/PostsContext'
 
 export default function SavedCollections() {
-  const { collections, savedPosts, createCollection, renameCollection, deleteCollection, addToCollection } =
+  const { collections, savedPosts, createCollection, renameCollection, deleteCollection } =
     usePosts()
   const [newName, setNewName] = useState('')
   const [editingId, setEditingId] = useState(null)

@@ -1,33 +1,45 @@
-// Minimal migration runner: executes each model's table SQL (CREATE TABLE IF
-// NOT EXISTS + ALTER TABLE ADD COLUMN IF NOT EXISTS) in dependency order.
-// Run with: npm run migrate
+import { readdir, readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 import { pool } from './config/db.js'
-import { USER_TABLE_SQL } from './models/User.js'
-import { POST_TABLE_SQL } from './models/Post.js'
-import { COMMENT_TABLE_SQL } from './models/Comment.js'
-import { REPORT_TABLE_SQL } from './models/Report.js'
-import { APPEAL_TABLE_SQL } from './models/Appeal.js'
-import { NOTIFICATION_TABLE_SQL } from './models/Notification.js'
 
-const statements = [
-  ['users', USER_TABLE_SQL],
-  ['posts', POST_TABLE_SQL],
-  ['comments', COMMENT_TABLE_SQL],
-  ['reports', REPORT_TABLE_SQL],
-  ['appeals', APPEAL_TABLE_SQL],
-  ['notifications', NOTIFICATION_TABLE_SQL],
-]
+const migrationsDir = fileURLToPath(new URL('../migrations', import.meta.url))
 
-async function run() {
-  for (const [name, sql] of statements) {
-    console.log(`Migrating: ${name}`)
-    await pool.query(sql)
-  }
-  console.log('Migrations complete.')
-  await pool.end()
+async function ensureMigrationTable(client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      filename text PRIMARY KEY,
+      applied_at timestamptz NOT NULL DEFAULT now()
+    )
+  `)
 }
 
-run().catch((err) => {
-  console.error('Migration failed:', err)
-  process.exit(1)
+async function run() {
+  const client = await pool.connect()
+  try {
+    await ensureMigrationTable(client)
+    const files = (await readdir(migrationsDir)).filter((name) => name.endsWith('.sql')).sort()
+
+    for (const filename of files) {
+      const { rowCount } = await client.query('SELECT 1 FROM schema_migrations WHERE filename = $1', [filename])
+      if (rowCount) {
+        console.log(`Skipping ${filename} (already applied)`)
+        continue
+      }
+
+      console.log(`Applying ${filename}`)
+      const sql = await readFile(path.join(migrationsDir, filename), 'utf8')
+      await client.query(sql)
+      await client.query('INSERT INTO schema_migrations (filename) VALUES ($1)', [filename])
+    }
+    console.log('Migrations complete.')
+  } finally {
+    client.release()
+    await pool.end()
+  }
+}
+
+run().catch((error) => {
+  console.error('Migration failed:', error)
+  process.exitCode = 1
 })

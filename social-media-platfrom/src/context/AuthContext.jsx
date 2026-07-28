@@ -25,6 +25,12 @@ export function AuthProvider({ children }) {
     return u
   }
 
+  const continueWithGoogle = async () => {
+    const u = await authService.continueWithGoogle()
+    setUser(u)
+    return u
+  }
+
   const logout = () => {
     authService.logout()
     setUser(null)
@@ -40,7 +46,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, isAuthenticated: !!user, ageGroup, login, signup, logout, updateUser }}
+      value={{ user, loading, isAuthenticated: !!user, ageGroup, login, signup, continueWithGoogle, logout, updateUser }}
     >
       {children}
     </AuthContext.Provider>

@@ -10,6 +10,7 @@ import { PostsProvider } from './context/PostsContext.jsx'
 import { ChatProvider } from './context/ChatContext.jsx'
 import { NotificationsProvider } from './context/NotificationsContext.jsx'
 import { StoriesProvider } from './context/StoriesContext.jsx'
+import { VerificationGateProvider } from './context/VerificationGateContext.jsx'
 import './styles/index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -19,15 +20,17 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <LanguageProvider>
           <ThemeProvider>
             <AuthProvider>
-              <PostsProvider>
-                <NotificationsProvider>
-                  <ChatProvider>
-                    <StoriesProvider>
-                      <App />
-                    </StoriesProvider>
-                  </ChatProvider>
-                </NotificationsProvider>
-              </PostsProvider>
+              <VerificationGateProvider>
+                <PostsProvider>
+                  <NotificationsProvider>
+                    <ChatProvider>
+                      <StoriesProvider>
+                        <App />
+                      </StoriesProvider>
+                    </ChatProvider>
+                  </NotificationsProvider>
+                </PostsProvider>
+              </VerificationGateProvider>
             </AuthProvider>
           </ThemeProvider>
         </LanguageProvider>

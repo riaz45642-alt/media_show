@@ -30,7 +30,7 @@ export default function ModerationHistory() {
 
   return (
     <div>
-      <PageHeader title="Moderation History" subtitle="Every AI and moderator decision on your content, in one place." />
+      <PageHeader title="Moderation History" subtitle="Every automated and moderator decision on your content, in one place." />
 
       <div className="mb-4 grid grid-cols-3 gap-2.5">
         <StatCard label="Approved" value={items.filter((p) => p.moderation_status === 'safe').length} color="text-secondary-dark" />
@@ -82,7 +82,7 @@ export default function ModerationHistory() {
                 <p className="text-sm text-gray-700 dark:text-gray-200">{post.text}</p>
                 {post.moderation_reason && (
                   <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    AI decision: {post.moderation_reason}
+                    Automated review: {post.moderation_reason}
                     {post.risk_score != null && ` (risk score ${post.risk_score}/100)`}
                   </p>
                 )}

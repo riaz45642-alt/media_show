@@ -9,7 +9,7 @@
 // rejects; a very high single Gemini category (e.g. self-harm) escalates
 // even if the blended average would look moderate.
 
-const HIGH_SEVERITY_CATEGORIES = ['self_harm', 'extremism', 'threats', 'violence']
+const HIGH_SEVERITY_CATEGORIES = ['self_harm', 'extremism', 'threats', 'violence', 'adult_sexual_content']
 
 export function computeDecision({ ruleResult, textAi, imageAi }) {
   if (ruleResult?.blocked) {

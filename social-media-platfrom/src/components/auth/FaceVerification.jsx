@@ -104,14 +104,21 @@ export default function FaceVerification({ onVerified }) {
     }
 
     // Stage 2: server-side Gemini vision check on the final frame only.
-    const serverResult = await verifyFaceLiveness(finalShot)
+    let serverResult
+    try {
+      serverResult = await verifyFaceLiveness(finalShot)
+    } catch {
+      stopCamera()
+      setPhase('failed')
+      return
+    }
     stopCamera()
 
     if (serverResult.verified) {
       setPhase('success')
       // Only a pass/fail + short-lived token is reported back — the frame
       // itself was analyzed in memory on the server and discarded.
-      onVerified(serverResult.token || null)
+      onVerified(serverResult)
     } else {
       setPhase('failed')
     }
@@ -128,7 +135,7 @@ export default function FaceVerification({ onVerified }) {
         <ShieldCheck size={17} className="mt-0.5 shrink-0 text-primary" />
         <p className="text-xs text-gray-500 dark:text-gray-400">
           We just confirm a live person is in front of the camera to keep Media Show free of fake accounts.
-          Your final frame is analyzed once by our AI check and immediately discarded — nothing is saved,
+          Your final frame is analyzed once by an automated liveness check and immediately discarded — nothing is saved,
           and we never store an image or infer your gender/age from it. Your profile picture is set
           separately, later, if you choose to add one.
         </p>

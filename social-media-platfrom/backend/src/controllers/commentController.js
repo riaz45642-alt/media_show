@@ -5,8 +5,8 @@ export async function listComments(req, res, next) {
   try {
     const { postId } = req.params
     const { rows } = await pool.query(
-      `SELECT c.id, c.text_content, c.created_at, c.user_id, u.name AS author
-       FROM comments c JOIN users u ON u.id = c.user_id
+      `SELECT c.id, c.body AS text_content, c.created_at, c.author_id AS user_id, u.display_name AS author
+       FROM comments c JOIN user_profiles u ON u.user_id = c.author_id
        WHERE c.post_id = $1 AND c.moderation_status = 'safe'
        ORDER BY c.created_at ASC LIMIT 200`,
       [postId]
@@ -25,9 +25,10 @@ export async function createComment(req, res, next) {
     const result = await moderate({ text, userId: req.user.id, contentType: 'comment' })
 
     const { rows } = await pool.query(
-      `INSERT INTO comments (post_id, user_id, text_content, moderation_status, risk_score, moderation_reason, ai_response)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, text_content, created_at, moderation_status`,
-      [postId, req.user.id, text, result.status, result.riskScore, result.reason, JSON.stringify(result.ai)]
+      `INSERT INTO comments (post_id, author_id, body, moderation_status, risk_score, moderation_reason)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING id, body AS text_content, created_at, moderation_status`,
+      [postId, req.user.id, text, result.status, result.riskScore, result.reason]
     )
 
     if (result.status === 'rejected') {

@@ -39,7 +39,12 @@ export default function Profile() {
           <Avatar name={user?.name || 'You'} src={user?.avatar} size={84} ring />
         </div>
         <h2 className="mt-3 font-display text-lg font-bold text-gray-800 dark:text-gray-100">
-          {user?.name || 'Explorer'} <GenderTag gender={user?.gender} className="text-sm font-medium" />
+          {user?.name || 'Explorer'}{' '}
+          <GenderTag
+            gender={user?.gender}
+            verified={Boolean(user?.face_verified || user?.faceVerified)}
+            className="text-sm font-medium"
+          />
         </h2>
         <p className="text-sm text-gray-500 dark:text-gray-400">{user?.email}</p>
         {ageGroup && (

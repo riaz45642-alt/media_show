@@ -5,18 +5,18 @@ export async function listNotifications(req, res, next) {
   try {
     const { category, unread, search } = req.query
     const params = [req.user.id]
-    let where = 'WHERE user_id = $1'
+    let where = 'WHERE recipient_id = $1'
 
     if (category && category !== 'all') {
       params.push(category)
-      where += ` AND category = $${params.length}`
+      where += ` AND kind = $${params.length}`
     }
     if (unread === 'true') {
-      where += ' AND read = false'
+      where += ' AND read_at IS NULL'
     }
     if (search) {
       params.push(`%${search}%`)
-      where += ` AND text ILIKE $${params.length}`
+      where += ` AND (title ILIKE $${params.length} OR body ILIKE $${params.length})`
     }
 
     const { rows } = await pool.query(
@@ -33,7 +33,7 @@ export async function listNotifications(req, res, next) {
 export async function markRead(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2 RETURNING *`,
+      `UPDATE notifications SET read_at = now() WHERE id = $1 AND recipient_id = $2 RETURNING *`,
       [req.params.id, req.user.id]
     )
     if (!rows[0]) return res.status(404).json({ message: 'Notification not found' })
@@ -46,7 +46,7 @@ export async function markRead(req, res, next) {
 // POST /api/notifications/read-all
 export async function markAllRead(req, res, next) {
   try {
-    await pool.query(`UPDATE notifications SET read = true WHERE user_id = $1 AND read = false`, [req.user.id])
+    await pool.query(`UPDATE notifications SET read_at = now() WHERE recipient_id = $1 AND read_at IS NULL`, [req.user.id])
     res.json({ ok: true })
   } catch (err) {
     next(err)
@@ -56,8 +56,8 @@ export async function markAllRead(req, res, next) {
 // GET /api/notifications/preferences
 export async function getPreferences(req, res, next) {
   try {
-    const { rows } = await pool.query(`SELECT notification_prefs FROM users WHERE id = $1`, [req.user.id])
-    res.json(rows[0]?.notification_prefs || {})
+    const { rows } = await pool.query(`SELECT notification_preferences FROM user_settings WHERE user_id = $1`, [req.user.id])
+    res.json(rows[0]?.notification_preferences || {})
   } catch (err) {
     next(err)
   }
@@ -67,11 +67,11 @@ export async function getPreferences(req, res, next) {
 export async function updatePreferences(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `UPDATE users SET notification_prefs = notification_prefs || $1::jsonb, updated_at = now()
-       WHERE id = $2 RETURNING notification_prefs`,
+      `UPDATE user_settings SET notification_preferences = notification_preferences || $1::jsonb
+       WHERE user_id = $2 RETURNING notification_preferences`,
       [JSON.stringify(req.body || {}), req.user.id]
     )
-    res.json(rows[0]?.notification_prefs || {})
+    res.json(rows[0]?.notification_preferences || {})
   } catch (err) {
     next(err)
   }
