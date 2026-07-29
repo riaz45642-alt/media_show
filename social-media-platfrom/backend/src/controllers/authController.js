@@ -178,48 +178,79 @@ export async function firebaseLogin(req, res, next) {
 
     try {
       await client.query('BEGIN')
-      const existing = await client.query(
-        `SELECT id, status FROM users WHERE email = $1 AND deleted_at IS NULL FOR UPDATE`,
-        [email]
+      const linkedIdentity = await client.query(
+        `SELECT u.id, u.status, u.deleted_at
+         FROM auth_identities i
+         JOIN users u ON u.id = i.user_id
+         WHERE i.provider = 'google' AND i.provider_subject = $1
+         FOR UPDATE OF i, u`,
+        [decoded.uid]
       )
 
-      if (existing.rows[0]) {
-        if (existing.rows[0].status !== 'active') {
-          await client.query('ROLLBACK')
-          return res.status(403).json({ message: 'This account is not currently active.' })
+      if (linkedIdentity.rows[0]) {
+        const linkedUser = linkedIdentity.rows[0]
+        if (linkedUser.deleted_at || linkedUser.status !== 'active') {
+          const error = new Error('This account is not currently active.')
+          error.status = 403
+          throw error
         }
-        userId = existing.rows[0].id
-        await client.query(
-          `UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()), last_login_at = now()
-           WHERE id = $1`,
-          [userId]
-        )
+        userId = linkedUser.id
       } else {
-        const inserted = await client.query(
+        const account = await client.query(
           `INSERT INTO users (email, email_verified_at, last_login_at)
-           VALUES ($1, now(), now()) RETURNING id`,
+           VALUES ($1, now(), now())
+           ON CONFLICT (email) DO UPDATE SET
+             email_verified_at = COALESCE(users.email_verified_at, now()),
+             last_login_at = now()
+           RETURNING id, status, deleted_at`,
           [email]
         )
-        userId = inserted.rows[0].id
-        const username = `${usernameBase}_${crypto.randomUUID().slice(0, 6)}`
-        await client.query(
-          `INSERT INTO user_profiles (user_id, username, display_name, age_group)
-           VALUES ($1, $2, $3, 'adult')`,
-          [userId, username, name]
-        )
-        await client.query('INSERT INTO user_settings (user_id) VALUES ($1)', [userId])
-        await client.query('INSERT INTO user_verification_status (user_id) VALUES ($1)', [userId])
+        const databaseUser = account.rows[0]
+        if (databaseUser.deleted_at || databaseUser.status !== 'active') {
+          const error = new Error('This account is not currently active.')
+          error.status = 403
+          throw error
+        }
+        userId = databaseUser.id
       }
 
-      await client.query(
+      const identity = await client.query(
         `INSERT INTO auth_identities
            (user_id, provider, provider_subject, provider_email, metadata, last_used_at)
          VALUES ($1, 'google', $2, $3, $4::jsonb, now())
          ON CONFLICT (provider, provider_subject) DO UPDATE SET
            provider_email = EXCLUDED.provider_email,
            metadata = EXCLUDED.metadata,
-           last_used_at = now()`,
+           last_used_at = now()
+         WHERE auth_identities.user_id = EXCLUDED.user_id
+         RETURNING user_id`,
         [userId, decoded.uid, email, JSON.stringify({ picture: decoded.picture || null })]
+      )
+      if (!identity.rowCount) {
+        const error = new Error('This Google account is already linked to another user.')
+        error.status = 409
+        throw error
+      }
+
+      const username = `${usernameBase}_${crypto.randomUUID().slice(0, 6)}`
+      await client.query(
+        `INSERT INTO user_profiles (user_id, username, display_name, age_group)
+         VALUES ($1, $2, $3, 'adult')
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userId, username, name]
+      )
+      await client.query(
+        `INSERT INTO user_settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`,
+        [userId]
+      )
+      await client.query(
+        `INSERT INTO user_verification_status (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`,
+        [userId]
+      )
+      await client.query(
+        `UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()), last_login_at = now()
+         WHERE id = $1`,
+        [userId]
       )
       await client.query('COMMIT')
     } catch (error) {
@@ -241,7 +272,12 @@ export async function firebaseLogin(req, res, next) {
        WHERE u.id = $1`,
       [userId, decoded.picture || null]
     )
-    res.json({ user: rows[0], token: generateToken({ id: userId }) })
+    if (!rows[0]) {
+      const error = new Error('Authenticated user profile could not be loaded.')
+      error.status = 500
+      throw error
+    }
+    res.status(200).json({ user: rows[0], token: generateToken({ id: userId }) })
   } catch (error) {
     if (error.code?.startsWith('auth/')) {
       return res.status(401).json({ message: 'Google sign-in token is invalid or expired.' })

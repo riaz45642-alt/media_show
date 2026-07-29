@@ -22,6 +22,28 @@ cp .env.example .env   # set DATABASE_URL, JWT_SECRET
 npm run dev
 ```
 
+## Production authentication configuration
+
+Google sign-in is completed by the Express API; the browser must never treat a
+Firebase ID token as the application's own session token.
+
+For Render and Supabase:
+
+1. In Supabase, open **Connect**, select **Session pooler**, and copy the entire
+   URI. Do not combine the direct host with pooler credentials. The expected
+   shape is
+   `postgresql://postgres.<project-ref>:<encoded-password>@aws-0-<region>.pooler.supabase.com:5432/postgres`.
+2. Set Render `DATABASE_URL` to that complete URI. URL-encode reserved password
+   characters such as `@`, `:`, `/`, `?`, and `#`.
+3. Set `FIREBASE_SERVICE_ACCOUNT` to the complete one-line service-account JSON,
+   `JWT_SECRET` to at least 32 random characters, and `CLIENT_URL` to the exact
+   deployed frontend origin (multiple origins may be comma-separated).
+4. Set the frontend build variable `VITE_API_URL` to
+   `https://<render-service>/api`, then rebuild/redeploy the frontend.
+5. Run `npm run migrate` once, then `npm run db:check`. The public
+   `/api/health` endpoint performs a live database query and returns HTTP 503
+   when the database is unavailable.
+
 ## Structure
 ```
 src/
@@ -63,4 +85,3 @@ backend/
 - Backend: added lightweight, dependency-free request validation and rate limiting for auth
   endpoints, graceful duplicate-email handling, basic security headers, a request body size cap,
   and a 404 handler.
-

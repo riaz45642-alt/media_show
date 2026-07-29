@@ -3,7 +3,16 @@ import { getAuth } from 'firebase-admin/auth'
 
 function credentialFromEnvironment() {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    return cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
+    let serviceAccount
+    try {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+    } catch (error) {
+      throw new Error('FIREBASE_SERVICE_ACCOUNT must contain valid JSON', { cause: error })
+    }
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n')
+    }
+    return cert(serviceAccount)
   }
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) return applicationDefault()
   return undefined
@@ -17,6 +26,4 @@ const appOptions = {
 const app = getApps()[0] || initializeApp(appOptions)
 
 export const firebaseAdminAuth = getAuth(app)
-export const firebaseRevocationChecksEnabled = Boolean(
-  process.env.FIREBASE_SERVICE_ACCOUNT || process.env.GOOGLE_APPLICATION_CREDENTIALS
-)
+export const firebaseRevocationChecksEnabled = process.env.FIREBASE_CHECK_REVOKED !== 'false'

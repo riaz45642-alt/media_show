@@ -8,6 +8,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "migrate": "node src/migrate.js",
+    "db:check": "node src/checkDatabase.js",
     "test": "node --test"
   },
   "dependencies": {
