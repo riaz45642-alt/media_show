@@ -6,6 +6,10 @@ const requiredColumns = {
   user_profiles: ['user_id', 'username', 'display_name', 'age_group'],
   user_settings: ['user_id'],
   user_verification_status: ['user_id', 'status'],
+  conversations: ['id', 'kind', 'created_by'],
+  conversation_members: ['conversation_id', 'user_id', 'role'],
+  groups: ['id', 'conversation_id', 'owner_id', 'name', 'category', 'privacy', 'member_count'],
+  group_members: ['group_id', 'user_id', 'role'],
 }
 
 async function run() {
@@ -26,7 +30,7 @@ async function run() {
     }
   }
   if (missing.length) throw new Error(`Database schema is missing: ${missing.join(', ')}`)
-  console.log(`Database connection and authentication schema OK (${tables.length} tables checked).`)
+  console.log(`Database connection and required schema OK (${tables.length} tables checked).`)
 }
 
 run()

@@ -3,12 +3,13 @@ import jwt from 'jsonwebtoken'
 import { markOnline, markOffline } from '../services/presenceService.js'
 import { registerCallHandlers } from './callHandlers.js'
 import { registerGroupHandlers } from './groupHandlers.js'
+import { corsOriginCallback } from '../config/cors.js'
 
 let io
 
 export function initSocket(httpServer) {
   io = new Server(httpServer, {
-    cors: { origin: process.env.CLIENT_URL || '*' },
+    cors: { origin: corsOriginCallback },
     maxHttpBufferSize: 1e6,
   })
 

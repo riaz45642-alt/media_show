@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/authMiddleware.js'
+import { validateBody } from '../middleware/validate.js'
 import {
   createGroup, updateGroup, deleteGroup, getGroup, listGroups, suggestedGroups,
   listMembers, joinOrRequest, listJoinRequests, reviewJoinRequest,
@@ -11,7 +12,17 @@ const router = Router()
 
 router.get('/', requireAuth, listGroups)
 router.get('/suggested', requireAuth, suggestedGroups)
-router.post('/', requireAuth, createGroup)
+router.post(
+  '/',
+  requireAuth,
+  validateBody({
+    name: { required: true, type: 'string', minLength: 2, maxLength: 100 },
+    description: { type: 'string', maxLength: 1000 },
+    category: { type: 'string', maxLength: 60 },
+    privacy: { type: 'string', oneOf: ['public', 'private'] },
+  }),
+  createGroup
+)
 router.get('/:groupId', requireAuth, getGroup)
 router.patch('/:groupId', requireAuth, updateGroup)
 router.delete('/:groupId', requireAuth, deleteGroup)

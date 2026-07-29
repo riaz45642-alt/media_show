@@ -21,6 +21,7 @@ import callRoutes from './routes/callRoutes.js'
 import presenceRoutes from './routes/presenceRoutes.js'
 import { initSocket } from './sockets/index.js'
 import { checkDatabase } from './config/db.js'
+import { corsOriginCallback } from './config/cors.js'
 
 dotenv.config()
 
@@ -30,16 +31,8 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
 
 const app = express()
 
-const allowedOrigins = (process.env.CLIENT_URL || '').split(',').map((value) => value.trim()).filter(Boolean)
 app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin) || (process.env.NODE_ENV !== 'production' && !allowedOrigins.length)) {
-      return callback(null, true)
-    }
-    const error = new Error('Origin is not allowed by CORS')
-    error.status = 403
-    callback(error)
-  },
+  origin: corsOriginCallback,
 }))
 // Cap request body size to guard against oversized payloads.
 app.use(express.json({ limit: '2mb' }))
