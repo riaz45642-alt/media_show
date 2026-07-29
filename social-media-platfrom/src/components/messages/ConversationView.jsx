@@ -6,6 +6,7 @@ import ChatComposer from '../chat/ChatComposer'
 import TypingDots from '../chat/TypingDots'
 import RecipientPickerModal from '../chat/RecipientPickerModal'
 import { useChat } from '../../context/ChatContext'
+import CallButtons from '../calls/CallButtons'
 
 export default function ConversationView({ conversation, onBack }) {
   const { sendMessage, deleteMessage, deleteConversation, togglePin, toggleArchive, markAsRead, forwardMessage, typing, findUser } =
@@ -73,7 +74,9 @@ export default function ConversationView({ conversation, onBack }) {
           </div>
         </div>
 
-        <div className="relative shrink-0">
+        <div className="flex shrink-0 items-center gap-1">
+          <CallButtons userId={conversation.participantId} userName={user?.name || 'User'} />
+          <div className="relative">
           <button
             onClick={() => setMenuOpen((o) => !o)}
             aria-label="Conversation options"
@@ -103,10 +106,11 @@ export default function ConversationView({ conversation, onBack }) {
               </button>
             </div>
           )}
+          </div>
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 space-y-2.5 overflow-y-auto rounded-2xl bg-gray-50/60 dark:bg-white/5 p-3.5">
+      <div ref={scrollRef} className="chat-wallpaper flex-1 space-y-2.5 overflow-y-auto rounded-2xl p-3.5">
         {conversation.messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
             <Avatar name={user?.name || 'User'} src={user?.avatar} color={user?.color} size={56} />

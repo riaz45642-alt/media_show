@@ -38,6 +38,10 @@ export function validateBody(rules) {
         errors.push(`${field} must be a number`)
         continue
       }
+      if (rule.type === 'array' && !Array.isArray(value)) {
+        errors.push(`${field} must be an array`)
+        continue
+      }
 
       if (rule.type === 'string') {
         const trimmed = value.trim()
@@ -55,6 +59,10 @@ export function validateBody(rules) {
         const num = Number(value)
         if (rule.min !== undefined && num < rule.min) errors.push(`${field} must be at least ${rule.min}`)
         if (rule.max !== undefined && num > rule.max) errors.push(`${field} must be at most ${rule.max}`)
+      }
+      if (rule.type === 'array') {
+        if (rule.minLength && value.length < rule.minLength) errors.push(`${field} must contain at least ${rule.minLength} item(s)`)
+        if (rule.maxLength && value.length > rule.maxLength) errors.push(`${field} must contain at most ${rule.maxLength} item(s)`)
       }
 
       if (rule.email && !isEmail(value)) {

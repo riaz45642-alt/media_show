@@ -39,7 +39,7 @@ export default function GroupChat({ group }) {
     if (!socket) return
     socket.emit('group:join', { groupId: group.id })
 
-    const onMessage = (msg) => setMessages((prev) => [...prev, msg])
+    const onMessage = (msg) => setMessages((prev) => prev.some((item) => item.id === msg.id) ? prev : [...prev, msg])
     const onDeleted = ({ messageId }) => setMessages((prev) => prev.filter((m) => m.id !== messageId))
     const onTyping = ({ userId, isTyping }) => {
       if (userId === user.id) return
@@ -87,7 +87,10 @@ export default function GroupChat({ group }) {
     setReplyTo(null)
     notifyTyping(false)
     try {
-      await groupService.sendMessage(group.id, { body, replyToId: replyTo?.id })
+      const created = await groupService.sendMessage(group.id, { body, replyToId: replyTo?.id })
+      if (created?.id) {
+        setMessages((previous) => previous.some((item) => item.id === created.id) ? previous : [...previous, created])
+      }
     } catch { /* the socket event still arrives if the request eventually succeeds */ }
   }
 
@@ -134,7 +137,7 @@ export default function GroupChat({ group }) {
         </div>
       )}
 
-      <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
+      <div className="chat-wallpaper flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {messages.map((m) => {
           const mine = m.sender_id === user.id
           const isPinned = pinned.some((p) => p.id === m.id)

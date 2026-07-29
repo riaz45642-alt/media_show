@@ -6,6 +6,27 @@ function clamp(n) {
   return Math.max(0, Math.min(100, Math.round(n)))
 }
 
+export async function searchUsers(req, res, next) {
+  try {
+    const search = String(req.query.search || '').trim()
+    const limit = Math.min(30, Math.max(1, Number(req.query.limit) || 20))
+    const { rows } = await pool.query(
+      `SELECT u.id, p.display_name AS name, p.username
+       FROM users u
+       JOIN user_profiles p ON p.user_id = u.id
+       WHERE u.id <> $1 AND u.status = 'active' AND u.deleted_at IS NULL
+         AND ($2 = '' OR p.display_name ILIKE '%' || $2 || '%' OR p.username ILIKE '%' || $2 || '%')
+       ORDER BY CASE WHEN $2 <> '' AND p.display_name ILIKE $2 || '%' THEN 0 ELSE 1 END,
+                p.display_name
+       LIMIT $3`,
+      [req.user.id, search, limit]
+    )
+    res.json(rows)
+  } catch (err) {
+    next(err)
+  }
+}
+
 export async function getMe(req, res, next) {
   try {
     const { rows } = await pool.query(

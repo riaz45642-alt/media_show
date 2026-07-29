@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Crown, Shield, UserMinus, Check, X } from 'lucide-react'
+import { Crown, Shield, UserMinus, Check, X, UserPlus } from 'lucide-react'
 import * as groupService from '../../services/groupService'
 import { useAuth } from '../../context/AuthContext'
+import AddGroupMembersModal from './AddGroupMembersModal'
 
 export default function GroupMembers({ group, onGroupChanged }) {
   const { user } = useAuth()
   const [members, setMembers] = useState([])
   const [requests, setRequests] = useState([])
+  const [addOpen, setAddOpen] = useState(false)
   const isOwner = group.my_role === 'owner'
   const isAdmin = ['owner', 'admin'].includes(group.my_role)
 
@@ -62,7 +64,17 @@ export default function GroupMembers({ group, onGroupChanged }) {
       )}
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-gray-500">{members.length} members</h3>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-gray-500">{members.length} members</h3>
+          {isAdmin && (
+            <button
+              onClick={() => setAddOpen(true)}
+              className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white"
+            >
+              <UserPlus size={14} /> Add members
+            </button>
+          )}
+        </div>
         <div className="space-y-2">
           {members.map((m) => (
             <div key={m.user_id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 dark:border-white/10">
@@ -93,6 +105,17 @@ export default function GroupMembers({ group, onGroupChanged }) {
           ))}
         </div>
       </div>
+
+      <AddGroupMembersModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        groupId={group.id}
+        existingMemberIds={members.map((member) => member.user_id)}
+        onAdded={async () => {
+          await load()
+          onGroupChanged?.()
+        }}
+      />
     </div>
   )
 }

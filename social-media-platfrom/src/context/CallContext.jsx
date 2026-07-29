@@ -13,6 +13,7 @@ const ICE_SERVERS = {
 
 // call.phase: 'idle' | 'outgoing' | 'incoming' | 'connecting' | 'active' | 'ended' | 'error'
 const initialCall = { phase: 'idle' }
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true'
 
 export function CallProvider({ children }) {
   const { user } = useAuth()
@@ -26,6 +27,8 @@ export function CallProvider({ children }) {
   const otherUserIdRef = useRef(null)
   const durationTimerRef = useRef(null)
   const facingModeRef = useRef('user')
+  const demoTimersRef = useRef([])
+  const isDemo = DEMO_MODE || user?._demoMode
 
   const cleanup = useCallback(() => {
     pcRef.current?.close()
@@ -34,9 +37,10 @@ export function CallProvider({ children }) {
     setLocalStream(null)
     setRemoteStream(null)
     clearInterval(durationTimerRef.current)
+    demoTimersRef.current.forEach(clearTimeout)
+    demoTimersRef.current = []
     setDuration(0)
     otherUserIdRef.current = null
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localStream])
 
   const getMedia = async (kind) => {
@@ -80,6 +84,19 @@ export function CallProvider({ children }) {
 
   const startCall = useCallback(async (calleeId, calleeName, kind = 'voice') => {
     setError(null)
+    const recipientIsDemo = !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(calleeId))
+    if (isDemo || recipientIsDemo) {
+      const callId = `demo-${crypto.randomUUID()}`
+      otherUserIdRef.current = calleeId
+      setCall({ phase: 'outgoing', callId, kind, otherUserId: calleeId, otherUserName: calleeName, demo: true })
+      demoTimersRef.current.push(setTimeout(() => {
+        setCall((current) => current.callId === callId ? { ...current, phase: 'connecting' } : current)
+      }, 700))
+      demoTimersRef.current.push(setTimeout(() => {
+        setCall((current) => current.callId === callId ? { ...current, phase: 'active' } : current)
+      }, 1500))
+      return
+    }
     const socket = getSocket()
     if (!socket) return setError('Not connected. Please refresh and try again.')
 
@@ -96,7 +113,7 @@ export function CallProvider({ children }) {
       otherUserIdRef.current = calleeId
       setCall({ phase: 'outgoing', callId: res.callId, roomId: res.roomId, kind, otherUserId: calleeId, otherUserName: calleeName })
     })
-  }, [cleanup])
+  }, [cleanup, isDemo])
 
   const acceptCall = useCallback(async () => {
     const socket = getSocket()
@@ -116,29 +133,43 @@ export function CallProvider({ children }) {
   }, [call, cleanup])
 
   const endCall = useCallback((reason = 'ended') => {
+    if (call.demo) {
+      cleanup()
+      setCall({ ...call, phase: 'ended', endReason: reason, lastDuration: duration })
+      setTimeout(() => setCall(initialCall), 1200)
+      return
+    }
     const socket = getSocket()
     if (call.callId) socket?.emit('call:end', { callId: call.callId, reason })
     cleanup()
     setCall(initialCall)
-  }, [call, cleanup])
+  }, [call, cleanup, duration])
 
   const toggleMute = useCallback(() => {
+    if (call.demo && !localStream) {
+      setCall((current) => ({ ...current, muted: !current.muted }))
+      return
+    }
     if (!localStream) return
     const track = localStream.getAudioTracks()[0]
     if (!track) return
     track.enabled = !track.enabled
     getSocket()?.emit('call:media-state', { callId: call.callId, to: otherUserIdRef.current, muted: !track.enabled })
     setCall((c) => ({ ...c, muted: !track.enabled }))
-  }, [localStream, call.callId])
+  }, [localStream, call.callId, call.demo])
 
   const toggleCamera = useCallback(() => {
+    if (call.demo && !localStream) {
+      setCall((current) => ({ ...current, cameraOff: !current.cameraOff }))
+      return
+    }
     if (!localStream) return
     const track = localStream.getVideoTracks()[0]
     if (!track) return
     track.enabled = !track.enabled
     getSocket()?.emit('call:media-state', { callId: call.callId, to: otherUserIdRef.current, cameraOff: !track.enabled })
     setCall((c) => ({ ...c, cameraOff: !track.enabled }))
-  }, [localStream, call.callId])
+  }, [localStream, call.callId, call.demo])
 
   const switchCamera = useCallback(async () => {
     if (!localStream || call.kind !== 'video') return

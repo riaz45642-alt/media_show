@@ -171,6 +171,74 @@ export async function listMembers(req, res, next) {
   }
 }
 
+export async function addMembers(req, res, next) {
+  try {
+    const groupId = req.params.groupId
+    const userIds = [...new Set(req.body.userIds || [])]
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    if (!userIds.every((id) => typeof id === 'string' && uuidPattern.test(id))) {
+      return res.status(400).json({ message: 'Every selected user must have a valid ID' })
+    }
+    const role = await getRole(groupId, req.user.id)
+    if (!['owner', 'admin'].includes(role)) {
+      return res.status(403).json({ message: 'Only group admins can add members' })
+    }
+
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      const { rows: groupRows } = await client.query(
+        `SELECT conversation_id FROM groups WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [groupId]
+      )
+      if (!groupRows.length) {
+        const error = new Error('Group not found')
+        error.status = 404
+        throw error
+      }
+      const { rows: validUsers } = await client.query(
+        `SELECT id FROM users
+         WHERE id = ANY($1::uuid[]) AND status = 'active' AND deleted_at IS NULL`,
+        [userIds]
+      )
+      if (!validUsers.length) {
+        const error = new Error('No valid users were selected')
+        error.status = 400
+        throw error
+      }
+      const validIds = validUsers.map(({ id }) => id)
+      const { rows: added } = await client.query(
+        `INSERT INTO group_members (group_id, user_id, role)
+         SELECT $1, user_id, 'member' FROM unnest($2::uuid[]) AS user_id
+         ON CONFLICT (group_id, user_id) DO NOTHING
+         RETURNING user_id`,
+        [groupId, validIds]
+      )
+      await client.query(
+        `INSERT INTO conversation_members (conversation_id, user_id, role)
+         SELECT $1, user_id, 'member' FROM unnest($2::uuid[]) AS user_id
+         ON CONFLICT (conversation_id, user_id) DO NOTHING`,
+        [groupRows[0].conversation_id, validIds]
+      )
+      await client.query(
+        `UPDATE groups SET member_count = (
+           SELECT count(*) FROM group_members WHERE group_id = $1
+         ) WHERE id = $1`,
+        [groupId]
+      )
+      await client.query('COMMIT')
+      res.status(201).json({ addedUserIds: added.map(({ user_id }) => user_id), addedCount: added.length })
+    } catch (err) {
+      await client.query('ROLLBACK')
+      throw err
+    } finally {
+      client.release()
+    }
+  } catch (err) {
+    next(err)
+  }
+}
+
 export async function joinOrRequest(req, res, next) {
   try {
     const groupId = req.params.groupId

@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/authMiddleware.js'
 import { validateBody } from '../middleware/validate.js'
 import {
   createGroup, updateGroup, deleteGroup, getGroup, listGroups, suggestedGroups,
-  listMembers, joinOrRequest, listJoinRequests, reviewJoinRequest,
+  listMembers, addMembers, joinOrRequest, listJoinRequests, reviewJoinRequest,
   inviteMember, respondToInvitation, removeMember, setMemberRole, transferOwnership, leaveGroup,
   createAnnouncement, listAnnouncements, createAssignment, listAssignments,
 } from '../controllers/groupController.js'
@@ -28,6 +28,14 @@ router.patch('/:groupId', requireAuth, updateGroup)
 router.delete('/:groupId', requireAuth, deleteGroup)
 
 router.get('/:groupId/members', requireAuth, listMembers)
+router.post(
+  '/:groupId/members',
+  requireAuth,
+  validateBody({
+    userIds: { required: true, type: 'array', minLength: 1, maxLength: 30 },
+  }),
+  addMembers
+)
 router.post('/:groupId/join', requireAuth, joinOrRequest)
 router.get('/:groupId/join-requests', requireAuth, listJoinRequests)
 router.post('/:groupId/join-requests/:requestId/review', requireAuth, reviewJoinRequest)
