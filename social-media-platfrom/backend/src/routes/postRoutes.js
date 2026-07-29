@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { listPosts, createPost } from '../controllers/postController.js'
+import { listPosts, createPost, updatePost, deletePost, toggleReaction } from '../controllers/postController.js'
 import { requireAuth } from '../middleware/authMiddleware.js'
 import { requireVerified } from '../middleware/requireVerified.js'
 import { validateBody } from '../middleware/validate.js'
@@ -19,5 +19,8 @@ router.post(
   }),
   createPost
 )
+router.patch('/:postId', requireAuth, validateBody({ text: { required: true, type: 'string', maxLength: 5000 } }), updatePost)
+router.delete('/:postId', requireAuth, deletePost)
+router.post('/:postId/reaction', requireAuth, toggleReaction)
 
 export default router

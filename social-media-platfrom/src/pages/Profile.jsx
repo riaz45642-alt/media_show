@@ -19,7 +19,7 @@ export default function Profile() {
   const { myPosts, savedPosts } = usePosts()
   const { t } = useLanguage()
   const ageGroup = user ? getAgeGroup(user.age) : null
-  const score = user?.safeZoneScore ?? 82
+  const score = user?.safeZoneScore ?? user?.safe_zone_score ?? 0
   const [tab, setTab] = useState('posts')
   const [createOpen, setCreateOpen] = useState(false)
 
@@ -96,7 +96,7 @@ export default function Profile() {
         </div>
         <div className="soft-card p-4 text-center">
           <Award size={20} className="mx-auto text-accent-dark" />
-          <p className="mt-2 text-xl font-bold text-gray-800 dark:text-gray-100">{user?.badges?.length ?? 3}</p>
+          <p className="mt-2 text-xl font-bold text-gray-800 dark:text-gray-100">{user?.badges?.length ?? 0}</p>
           <p className="text-xs text-gray-500 dark:text-gray-400">{t('badges_earned')}</p>
         </div>
       </div>

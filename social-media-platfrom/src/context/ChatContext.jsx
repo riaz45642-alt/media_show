@@ -1,15 +1,13 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
-import { SEED_CONVERSATIONS, CANNED_REPLIES, nextMessageId, findUser } from '../data/messages'
-import { AI_ASSISTANT_ID } from '../data/users'
+import { nextMessageId, findUser } from '../data/messages'
 import { moderateContent } from '../services/moderationService'
-import { askMediaShowAI } from '../services/aiChatService'
 
 const ChatContext = createContext(null)
 
 export function ChatProvider({ children }) {
-  const [conversations, setConversations] = useState(SEED_CONVERSATIONS)
+  const [conversations, setConversations] = useState([])
   // { [conversationId]: true } while the other participant is "typing"
-  const [typing, setTyping] = useState({})
+  const [typing] = useState({})
   const timers = useRef([])
 
   const clearLater = (fn, ms) => {
@@ -39,56 +37,7 @@ export function ChatProvider({ children }) {
     setConversations((prev) => prev.map((c) => (c.id === id ? updater(c) : c)))
   }
 
-  // Simulates the other participant seeing + responding to a message, purely
-  // for demo purposes (no real backend/socket wired up yet).
-  const simulateReply = (conversationId) => {
-    setTyping((prev) => ({ ...prev, [conversationId]: false }))
-    // mark my most recent messages as seen
-    clearLater(() => {
-      touchConversation(conversationId, (c) => ({
-        ...c,
-        messages: c.messages.map((m) => (m.senderId === 'me' ? { ...m, status: 'seen' } : m)),
-      }))
-      setTyping((prev) => ({ ...prev, [conversationId]: true }))
-    }, 700)
-
-    clearLater(() => {
-      setTyping((prev) => ({ ...prev, [conversationId]: false }))
-      touchConversation(conversationId, (c) => {
-        const reply = CANNED_REPLIES[Math.floor(Math.random() * CANNED_REPLIES.length)]
-        return {
-          ...c,
-          messages: [
-            ...c.messages,
-            { id: nextMessageId(), senderId: c.participantId, type: 'text', text: reply, time: new Date().toISOString(), status: 'delivered' },
-          ],
-        }
-      })
-    }, 2100)
-  }
-
-  const askAIAssistant = (conversationId, userText) => {
-    setTyping((prev) => ({ ...prev, [conversationId]: true }))
-    const convo = conversations.find((c) => c.id === conversationId)
-    const history = (convo?.messages || [])
-      .slice(-8)
-      .map((m) => ({ role: m.senderId === 'me' ? 'user' : 'assistant', text: m.text }))
-
-    askMediaShowAI(userText, history).then((reply) => {
-      setTyping((prev) => ({ ...prev, [conversationId]: false }))
-      touchConversation(conversationId, (c) => ({
-        ...c,
-        messages: [
-          ...c.messages,
-          { id: nextMessageId(), senderId: AI_ASSISTANT_ID, type: 'text', text: reply, time: new Date().toISOString(), status: 'delivered' },
-        ],
-      }))
-    })
-  }
-
   const sendMessage = useCallback((conversationId, payload) => {
-    const isAIConvo = conversationId === AI_ASSISTANT_ID
-
     const message = {
       id: nextMessageId(),
       senderId: 'me',
@@ -130,11 +79,6 @@ export function ChatProvider({ children }) {
         }))
       }, 500)
 
-      if (isAIConvo) {
-        askAIAssistant(conversationId, textToCheck)
-      } else {
-        simulateReply(conversationId)
-      }
     })
 
     return message
@@ -195,7 +139,6 @@ export function ChatProvider({ children }) {
       })
       return next
     })
-    touchedIds.forEach((id) => clearLater(() => simulateReply(id), 900))
     return touchedIds
   }, [])
 
@@ -228,7 +171,6 @@ export function ChatProvider({ children }) {
       })
       return next
     })
-    touchedIds.forEach((id) => clearLater(() => simulateReply(id), 900))
     return touchedIds
   }, [])
 

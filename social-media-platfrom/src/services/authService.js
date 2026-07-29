@@ -1,7 +1,6 @@
 const STORAGE_KEY = 'mediashow_user'
 const TOKEN_KEY = 'mediashow_token'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true'
 
 function backendIsUsableFromThisPage() {
   try {
@@ -72,60 +71,25 @@ export async function verifyFaceLiveness(firstFrameBase64, secondFrameBase64) {
 }
 
 export async function signup(userData) {
-  if (!backendIsUsableFromThisPage()) {
-    const { signupWithFirebase } = await import('./firebaseEmailAuth.js')
-    return storeSession(await signupWithFirebase(userData))
-  }
-  try {
-    return storeSession(await request('/auth/signup', {
-      method: 'POST',
-      body: JSON.stringify({
-        name: userData.name,
-        email: userData.email,
-        password: userData.password,
-        age: Number(userData.age),
-        gender: userData.gender || '',
-      }),
-    }))
-  } catch (error) {
-    if (!error.status) {
-      const { signupWithFirebase } = await import('./firebaseEmailAuth.js')
-      return storeSession(await signupWithFirebase(userData))
-    }
-    if (!DEMO_MODE || error.status) throw error
-    return storeSession({
-      user: {
-        id: crypto.randomUUID(), name: userData.name, email: userData.email,
-        age: Number(userData.age), gender: userData.gender, face_verified: false,
-        safeZoneScore: 82, createdAt: new Date().toISOString(), _demoMode: true,
-      },
-    })
-  }
+  if (!backendIsUsableFromThisPage()) throw new Error('Account creation requires the production API.')
+  return storeSession(await request('/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: userData.name,
+      email: userData.email,
+      password: userData.password,
+      age: Number(userData.age),
+      gender: userData.gender || '',
+    }),
+  }))
 }
 
 export async function login(credentials) {
-  if (!backendIsUsableFromThisPage()) {
-    const { loginWithFirebase } = await import('./firebaseEmailAuth.js')
-    return storeSession(await loginWithFirebase(credentials))
-  }
-  try {
-    return storeSession(await request('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(credentials),
-    }))
-  } catch (error) {
-    if (!error.status) {
-      const { loginWithFirebase } = await import('./firebaseEmailAuth.js')
-      return storeSession(await loginWithFirebase(credentials))
-    }
-    if (!DEMO_MODE || error.status) throw error
-    return storeSession({
-      user: {
-        id: crypto.randomUUID(), name: credentials.email.split('@')[0], email: credentials.email,
-        age: 18, face_verified: false, safeZoneScore: 82, _demoMode: true,
-      },
-    })
-  }
+  if (!backendIsUsableFromThisPage()) throw new Error('Login requires the production API.')
+  return storeSession(await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  }))
 }
 
 // A provider adapter keeps the UI independent of Firebase. Configure a

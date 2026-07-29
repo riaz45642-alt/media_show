@@ -70,7 +70,12 @@ export default function CreatePostModal({ open, onClose }) {
       return
     }
     const type = media.length === 0 ? 'text' : media.length > 1 ? 'mixed' : media[0].type
-    addPost({ text, media: media.map(({ type: mt, src }) => ({ type: mt, src })), type })
+    try {
+      await addPost({ text, media: media.map(({ type: mt, src }) => ({ type: mt, src })), type })
+    } catch (err) {
+      setError(err.message)
+      return
+    }
     reset()
     onClose()
   }

@@ -45,3 +45,45 @@ export async function createPost(req, res, next) {
     next(err)
   }
 }
+
+export async function updatePost(req, res, next) {
+  try {
+    const { text } = req.body
+    const result = await moderate({ text, userId: req.user.id, contentType: 'post' })
+    if (result.status === 'rejected') return res.status(422).json({ message: 'Post rejected by moderation', reason: result.reason })
+    const { rows } = await pool.query(
+      `UPDATE posts SET body = $1, moderation_status = $2, risk_score = $3,
+              moderation_reason = $4, published_at = CASE WHEN $2 = 'safe' THEN COALESCE(published_at, now()) ELSE NULL END
+       WHERE id = $5 AND author_id = $6 AND deleted_at IS NULL RETURNING *`,
+      [text, result.status, result.riskScore, result.reason, req.params.postId, req.user.id]
+    )
+    if (!rows[0]) return res.status(404).json({ message: 'Post not found' })
+    res.json(rows[0])
+  } catch (err) { next(err) }
+}
+
+export async function deletePost(req, res, next) {
+  try {
+    const { rowCount } = await pool.query(
+      'UPDATE posts SET deleted_at = now() WHERE id = $1 AND author_id = $2 AND deleted_at IS NULL',
+      [req.params.postId, req.user.id]
+    )
+    if (!rowCount) return res.status(404).json({ message: 'Post not found' })
+    res.status(204).end()
+  } catch (err) { next(err) }
+}
+
+export async function toggleReaction(req, res, next) {
+  try {
+    const removed = await pool.query('DELETE FROM reactions WHERE user_id = $1 AND post_id = $2 RETURNING post_id', [req.user.id, req.params.postId])
+    if (!removed.rowCount) {
+      await pool.query(`INSERT INTO reactions (user_id, post_id, reaction) VALUES ($1,$2,'like')`, [req.user.id, req.params.postId])
+    }
+    const { rows } = await pool.query(
+      `UPDATE posts SET like_count = (SELECT count(*) FROM reactions WHERE post_id = $1)
+       WHERE id = $1 RETURNING like_count`,
+      [req.params.postId]
+    )
+    res.json({ liked: !removed.rowCount, likeCount: rows[0]?.like_count || 0 })
+  } catch (err) { next(err) }
+}

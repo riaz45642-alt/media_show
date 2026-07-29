@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { getMe, updateMe, getReputation, getModerationHistory, searchUsers } from '../controllers/userController.js'
+import { getMe, updateMe, getReputation, getModerationHistory, searchUsers, getUserProfile } from '../controllers/userController.js'
 import { requireAuth } from '../middleware/authMiddleware.js'
 import { validateBody } from '../middleware/validate.js'
 
@@ -7,6 +7,7 @@ const router = Router()
 router.get('/me', requireAuth, getMe)
 router.get('/me/moderation-history', requireAuth, getModerationHistory)
 router.get('/', requireAuth, searchUsers)
+router.get('/:id', requireAuth, getUserProfile)
 router.get('/:id/reputation', requireAuth, getReputation)
 router.put(
   '/me',

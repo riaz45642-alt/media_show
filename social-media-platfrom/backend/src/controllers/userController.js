@@ -27,6 +27,29 @@ export async function searchUsers(req, res, next) {
   }
 }
 
+export async function getUserProfile(req, res, next) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT u.id, p.display_name AS name, p.username, p.bio, p.gender, p.age_group,
+              count(DISTINCT f1.follower_id)::int AS follower_count,
+              count(DISTINCT f2.followed_id)::int AS following_count,
+              count(DISTINCT po.id)::int AS post_count
+       FROM users u
+       JOIN user_profiles p ON p.user_id = u.id
+       LEFT JOIN follows f1 ON f1.followed_id = u.id
+       LEFT JOIN follows f2 ON f2.follower_id = u.id
+       LEFT JOIN posts po ON po.author_id = u.id AND po.deleted_at IS NULL AND po.moderation_status = 'safe'
+       WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL
+       GROUP BY u.id, p.display_name, p.username, p.bio, p.gender, p.age_group`,
+      [req.params.id]
+    )
+    if (!rows[0]) return res.status(404).json({ message: 'User not found' })
+    res.json(rows[0])
+  } catch (err) {
+    next(err)
+  }
+}
+
 export async function getMe(req, res, next) {
   try {
     const { rows } = await pool.query(
