@@ -2,6 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { runRuleBasedFilter } from '../src/services/ruleBasedFilter.js'
 import { computeDecision } from '../src/services/riskEngine.js'
+import {
+  PERSISTED_MODERATION_STATUSES,
+  validateModerationDecision,
+} from '../src/services/moderationService.js'
 
 test('ordinary greetings and names are not flagged by rules', () => {
   for (const text of ['Hello', 'Ahmed', 'Hi there', 'Good morning']) {
@@ -27,4 +31,15 @@ test('low-risk model output remains safe', () => {
     textAi: { available: true, overall_score: 3, categories: {}, primary_concern: null },
   })
   assert.equal(decision.status, 'safe')
+})
+
+test('moderation decisions only persist values supported by moderation_state', () => {
+  assert.deepEqual(PERSISTED_MODERATION_STATUSES, ['safe', 'flagged', 'rejected'])
+  for (const status of PERSISTED_MODERATION_STATUSES) {
+    assert.equal(validateModerationDecision({ status }).status, status)
+  }
+  assert.throws(
+    () => validateModerationDecision({ status: 'approved' }),
+    (error) => error.code === 'INVALID_MODERATION_STATUS'
+  )
 })

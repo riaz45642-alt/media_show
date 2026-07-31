@@ -25,7 +25,8 @@ export async function createPost(req, res, next) {
 
     const { rows } = await pool.query(
       `INSERT INTO posts (author_id, body, moderation_status, risk_score, moderation_reason, published_at)
-       VALUES ($1,$2,$3,$4,$5,CASE WHEN $3 = 'safe' THEN now() ELSE NULL END)
+       VALUES ($1,$2,$3::moderation_state,$4,$5,
+               CASE WHEN $3::moderation_state = 'safe'::moderation_state THEN now() ELSE NULL END)
        RETURNING *, author_id AS user_id, body AS text_content, like_count AS likes_count`,
       [
         req.user.id,
@@ -52,8 +53,11 @@ export async function updatePost(req, res, next) {
     const result = await moderate({ text, userId: req.user.id, contentType: 'post' })
     if (result.status === 'rejected') return res.status(422).json({ message: 'Post rejected by moderation', reason: result.reason })
     const { rows } = await pool.query(
-      `UPDATE posts SET body = $1, moderation_status = $2, risk_score = $3,
-              moderation_reason = $4, published_at = CASE WHEN $2 = 'safe' THEN COALESCE(published_at, now()) ELSE NULL END
+      `UPDATE posts SET body = $1, moderation_status = $2::moderation_state, risk_score = $3,
+              moderation_reason = $4, published_at = CASE
+                WHEN $2::moderation_state = 'safe'::moderation_state THEN COALESCE(published_at, now())
+                ELSE NULL
+              END
        WHERE id = $5 AND author_id = $6 AND deleted_at IS NULL RETURNING *`,
       [text, result.status, result.riskScore, result.reason, req.params.postId, req.user.id]
     )

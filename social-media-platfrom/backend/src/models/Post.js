@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS posts (
   text_content TEXT,
   image_url TEXT,
   tag VARCHAR(60),
-  moderation_status VARCHAR(20) DEFAULT 'pending',
+  moderation_status moderation_state NOT NULL DEFAULT 'pending',
   risk_score INT DEFAULT 0,
   moderation_reason TEXT,
   ai_response JSONB,

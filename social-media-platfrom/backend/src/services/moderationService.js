@@ -7,6 +7,18 @@ import { runRuleBasedFilter, validateUpload } from './ruleBasedFilter.js'
 import { analyzeTextWithGemini, analyzeImageWithGemini } from './geminiService.js'
 import { computeDecision } from './riskEngine.js'
 
+export const PERSISTED_MODERATION_STATUSES = Object.freeze(['safe', 'flagged', 'rejected'])
+const persistedStatuses = new Set(PERSISTED_MODERATION_STATUSES)
+
+export function validateModerationDecision(decision) {
+  if (!decision || !persistedStatuses.has(decision.status)) {
+    const error = new Error(`Invalid moderation status: ${decision?.status ?? 'missing'}`)
+    error.code = 'INVALID_MODERATION_STATUS'
+    throw error
+  }
+  return decision
+}
+
 /**
  * @param {{ text?: string, imageUrl?: string, image?: {base64,mimeType}, userId?: string, contentType?: string }} input
  * @returns {Promise<{status:'safe'|'flagged'|'rejected', riskScore:number, reason:string|null, flags:string[], ai:{text:object,image:object}}>}
@@ -17,19 +29,19 @@ export async function moderate({ text, imageUrl, image, userId, contentType = 'p
   // Hard block (SQLi/XSS) short-circuits before ever calling the AI model.
   if (ruleResult.blocked) {
     const decision = computeDecision({ ruleResult })
-    return { ...decision, ai: { text: null, image: null } }
+    return validateModerationDecision({ ...decision, ai: { text: null, image: null } })
   }
 
   if (image) {
     const upload = validateUpload({ mimeType: image.mimeType, sizeBytes: image.sizeBytes, kind: 'image' })
     if (!upload.valid) {
-      return {
+      return validateModerationDecision({
         status: 'rejected',
         riskScore: 100,
         reason: upload.reason,
         flags: [upload.reason],
         ai: { text: null, image: null },
-      }
+      })
     }
   }
 
@@ -39,7 +51,7 @@ export async function moderate({ text, imageUrl, image, userId, contentType = 'p
   ])
 
   const decision = computeDecision({ ruleResult, textAi, imageAi })
-  return { ...decision, ai: { text: textAi, image: imageAi } }
+  return validateModerationDecision({ ...decision, ai: { text: textAi, image: imageAi } })
 }
 
 // Backwards-compatible helpers (kept so any existing call sites don't break).

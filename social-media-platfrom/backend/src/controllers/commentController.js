@@ -26,7 +26,7 @@ export async function createComment(req, res, next) {
 
     const { rows } = await pool.query(
       `INSERT INTO comments (post_id, author_id, body, moderation_status, risk_score, moderation_reason)
-       VALUES ($1,$2,$3,$4,$5,$6)
+       VALUES ($1,$2,$3,$4::moderation_state,$5,$6)
        RETURNING id, body AS text_content, created_at, moderation_status`,
       [postId, req.user.id, text, result.status, result.riskScore, result.reason]
     )

@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS comments (
   post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   text_content TEXT NOT NULL,
-  moderation_status VARCHAR(20) DEFAULT 'pending',
+  moderation_status moderation_state NOT NULL DEFAULT 'pending',
   risk_score INT DEFAULT 0,
   moderation_reason TEXT,
   ai_response JSONB,
