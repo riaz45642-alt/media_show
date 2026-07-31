@@ -1,4 +1,4 @@
-const DEPLOYED_FRONTEND_ORIGIN = 'https://media-show.netlify.app'
+const DEPLOYED_FRONTEND_ORIGIN = 'https://media-show.pages.dev'
 
 function normalizeOrigin(value) {
   try {

@@ -14,6 +14,17 @@ npm run dev
 ```
 Visit http://localhost:5173 — sign up (any email/password + age) to enter the app.
 
+## Cloudflare Pages deployment
+
+The repository root is configured for Cloudflare Pages. Use `npm run build:cloudflare`
+with `social-media-platfrom/dist` as the build output directory. Cloudflare Pages
+automatically applies SPA fallback behavior when the output has no top-level
+`404.html`, so React Router routes work without a provider-specific redirects file.
+
+Set `VITE_API_URL` in the Cloudflare Pages build environment to the public HTTPS
+Express API URL ending in `/api`. For direct CLI deployment, run
+`npm run deploy:cloudflare` from the repository root.
+
 ## Run the backend (optional, API scaffold only)
 ```bash
 cd backend
