@@ -10,20 +10,20 @@ import { PostsProvider } from './context/PostsContext.jsx'
 import { ChatProvider } from './context/ChatContext.jsx'
 import { NotificationsProvider } from './context/NotificationsContext.jsx'
 import { StoriesProvider } from './context/StoriesContext.jsx'
-import { VerificationGateProvider } from './context/VerificationGateContext.jsx'
 import { CallProvider } from './context/CallContext.jsx'
 import CallOverlay from './components/calls/CallOverlay.jsx'
+import ContentFilterGuard from './components/common/ContentFilterGuard.jsx'
 import './styles/index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
+      <ContentFilterGuard />
       <BrowserRouter>
         <LanguageProvider>
           <ThemeProvider>
             <AuthProvider>
-              <VerificationGateProvider>
-                <PostsProvider>
+              <PostsProvider>
                   <NotificationsProvider>
                     <ChatProvider>
                       <StoriesProvider>
@@ -34,8 +34,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                       </StoriesProvider>
                     </ChatProvider>
                   </NotificationsProvider>
-                </PostsProvider>
-              </VerificationGateProvider>
+              </PostsProvider>
             </AuthProvider>
           </ThemeProvider>
         </LanguageProvider>

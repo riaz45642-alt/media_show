@@ -2,26 +2,24 @@ import { useState } from 'react'
 import { Heart, MessageCircle, Share2, Bookmark, Check, X } from 'lucide-react'
 import Avatar from '../ui/Avatar'
 import SafeBadge from '../common/SafeBadge'
-import GenderTag from '../common/GenderTag'
+import ContentFilterWarning from '../common/ContentFilterWarning'
 import PostMenu from './PostMenu'
 import PostMedia from '../feed/PostMedia'
 import CommentsSheet from '../feed/CommentsSheet'
 import ShareSheet from '../feed/ShareSheet'
 import { usePosts } from '../../context/PostsContext'
 import { useLanguage } from '../../context/LanguageContext'
-import { useAuth } from '../../context/AuthContext'
-import { USERS } from '../../data/users'
+import { filterTextContent } from '../../utils/contentFilter'
 
 export default function PostCard({ post }) {
   const { toggleLike, toggleSave, editPost } = usePosts()
   const { t } = useLanguage()
-  const { user } = useAuth()
-  const authorGender = post.own ? user?.gender : USERS.find((u) => u.name === post.author)?.gender
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [heartBurst, setHeartBurst] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(post.text || '')
+  const [blockedTerms, setBlockedTerms] = useState([])
 
   const doubleTapLike = () => {
     if (!post.likedByMe) toggleLike(post.id)
@@ -29,8 +27,11 @@ export default function PostCard({ post }) {
     setTimeout(() => setHeartBurst(false), 700)
   }
 
-  const saveEdit = () => {
-    editPost(post.id, draft.trim())
+  const saveEdit = async () => {
+    const filtered = filterTextContent(draft)
+    setBlockedTerms(filtered.matches)
+    if (!filtered.allowed) return
+    await editPost(post.id, draft.trim())
     setEditing(false)
   }
 
@@ -41,7 +42,7 @@ export default function PostCard({ post }) {
           <Avatar name={post.author} src={post.avatarSrc} color={post.avatarColor} size={42} />
           <div>
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-              {post.author} <GenderTag gender={authorGender} className="text-xs font-medium" />
+              {post.author}
             </p>
             <p className="text-xs text-gray-400">{post.time}{post.edited ? ' · Edited' : ''}</p>
           </div>
@@ -69,10 +70,12 @@ export default function PostCard({ post }) {
           <div className="mb-3.5">
             <textarea
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => { setDraft(e.target.value); setBlockedTerms([]) }}
               rows={3}
-              className="w-full rounded-2xl border border-gray-200 dark:border-white/10 bg-transparent p-3 text-[15px] text-gray-700 dark:text-gray-200 focus-ring"
+              aria-invalid={blockedTerms.length > 0}
+              className={`w-full rounded-2xl border bg-transparent p-3 text-[15px] text-gray-700 dark:text-gray-200 focus-ring ${blockedTerms.length ? 'border-red-500' : 'border-gray-200 dark:border-white/10'}`}
             />
+            <ContentFilterWarning matches={blockedTerms} />
             <div className="mt-2 flex justify-end gap-2">
               <button onClick={() => setEditing(false)} className="tap-scale flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold text-gray-500">
                 <X size={13} /> Cancel

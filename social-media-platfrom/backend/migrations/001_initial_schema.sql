@@ -13,7 +13,6 @@ CREATE TYPE conversation_kind AS ENUM ('direct', 'group');
 CREATE TYPE member_role AS ENUM ('member', 'admin', 'owner');
 CREATE TYPE message_kind AS ENUM ('text', 'image', 'video', 'audio', 'shared', 'system');
 CREATE TYPE report_state AS ENUM ('open', 'reviewing', 'resolved', 'dismissed');
-CREATE TYPE verification_state AS ENUM ('pending', 'verified', 'failed', 'expired', 'revoked');
 CREATE TYPE notification_kind AS ENUM (
   'like', 'reaction', 'comment', 'mention', 'follow', 'friend_request',
   'message', 'moderation', 'appeal', 'report', 'verification', 'security', 'system'
@@ -53,7 +52,6 @@ CREATE TABLE user_profiles (
   display_name varchar(120) NOT NULL,
   date_of_birth date,
   age_group varchar(20) NOT NULL DEFAULT 'adult' CHECK (age_group IN ('kids', 'teen', 'adult')),
-  gender varchar(30),
   bio varchar(500),
   avatar_media_id uuid,
   cover_media_id uuid,
@@ -104,30 +102,6 @@ CREATE TABLE media_assets (
 ALTER TABLE user_profiles
   ADD CONSTRAINT user_profiles_avatar_fk FOREIGN KEY (avatar_media_id) REFERENCES media_assets(id) ON DELETE SET NULL,
   ADD CONSTRAINT user_profiles_cover_fk FOREIGN KEY (cover_media_id) REFERENCES media_assets(id) ON DELETE SET NULL;
-
-CREATE TABLE verification_sessions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status verification_state NOT NULL DEFAULT 'pending',
-  provider varchar(40) NOT NULL DEFAULT 'liveness',
-  attempt_count smallint NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
-  risk_score smallint CHECK (risk_score BETWEEN 0 AND 100),
-  failure_reason text,
-  verified_at timestamptz,
-  expires_at timestamptz NOT NULL DEFAULT (now() + interval '10 minutes'),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE user_verification_status (
-  user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  status verification_state NOT NULL DEFAULT 'pending',
-  verified_session_id uuid REFERENCES verification_sessions(id) ON DELETE SET NULL,
-  verified_at timestamptz,
-  reverify_after timestamptz,
-  revoked_at timestamptz,
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
 
 CREATE TABLE posts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -417,7 +391,6 @@ CREATE INDEX users_status_idx ON users (status) WHERE deleted_at IS NULL;
 CREATE INDEX auth_identities_user_idx ON auth_identities (user_id);
 CREATE INDEX profiles_display_name_idx ON user_profiles (lower(display_name));
 CREATE INDEX media_owner_created_idx ON media_assets (owner_id, created_at DESC) WHERE deleted_at IS NULL;
-CREATE INDEX verification_user_created_idx ON verification_sessions (user_id, created_at DESC);
 CREATE INDEX posts_feed_idx ON posts (published_at DESC, id) WHERE deleted_at IS NULL AND moderation_status = 'safe';
 CREATE INDEX posts_author_idx ON posts (author_id, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX comments_post_idx ON comments (post_id, created_at, id) WHERE deleted_at IS NULL;
@@ -444,8 +417,6 @@ $$;
 CREATE TRIGGER users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER profiles_updated_at BEFORE UPDATE ON user_profiles FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER settings_updated_at BEFORE UPDATE ON user_settings FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER verification_sessions_updated_at BEFORE UPDATE ON verification_sessions FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER verification_status_updated_at BEFORE UPDATE ON user_verification_status FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER posts_updated_at BEFORE UPDATE ON posts FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER comments_updated_at BEFORE UPDATE ON comments FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER conversations_updated_at BEFORE UPDATE ON conversations FOR EACH ROW EXECUTE FUNCTION set_updated_at();

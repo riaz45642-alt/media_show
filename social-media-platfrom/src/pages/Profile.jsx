@@ -7,7 +7,6 @@ import ProfileGrid from '../components/profile/ProfileGrid'
 import CreatePostModal from '../components/feed/CreatePostModal'
 import EmptyState from '../components/common/EmptyState'
 import TrustBadge from '../components/common/TrustBadge'
-import GenderTag from '../components/common/GenderTag'
 import { useAuth } from '../context/AuthContext'
 import { usePosts } from '../context/PostsContext'
 import { useLanguage } from '../context/LanguageContext'
@@ -39,12 +38,7 @@ export default function Profile() {
           <Avatar name={user?.name || 'You'} src={user?.avatar} size={84} ring />
         </div>
         <h2 className="mt-3 font-display text-lg font-bold text-gray-800 dark:text-gray-100">
-          {user?.name || 'Explorer'}{' '}
-          <GenderTag
-            gender={user?.gender}
-            verified={Boolean(user?.face_verified || user?.faceVerified)}
-            className="text-sm font-medium"
-          />
+          {user?.name || 'Explorer'}
         </h2>
         <p className="text-sm text-gray-500 dark:text-gray-400">{user?.email}</p>
         {ageGroup && (

@@ -30,8 +30,6 @@ async function firebaseSession(firebaseUser, extraProfile = {}) {
       email: firebaseUser.email,
       avatar: firebaseUser.photoURL || '',
       age: extraProfile.age ? Number(extraProfile.age) : null,
-      gender: extraProfile.gender || '',
-      face_verified: false,
       safeZoneScore: 82,
       provider: 'password',
       _firebaseOnly: true,

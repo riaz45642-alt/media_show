@@ -4,23 +4,25 @@ import Modal from '../ui/Modal'
 import Avatar from '../ui/Avatar'
 import { useLanguage } from '../../context/LanguageContext'
 import { usePosts } from '../../context/PostsContext'
-import { useVerificationGate } from '../../context/VerificationGateContext'
+import ContentFilterWarning from '../common/ContentFilterWarning'
+import { filterTextContent } from '../../utils/contentFilter'
 
 export default function CommentsSheet({ post, open, onClose }) {
   const { t } = useLanguage()
   const { addComment } = usePosts()
-  const { requireVerification } = useVerificationGate()
   const [text, setText] = useState('')
+  const [blockedTerms, setBlockedTerms] = useState([])
 
   if (!post) return null
 
   const submit = (e) => {
     e.preventDefault()
     if (!text.trim()) return
-    requireVerification(() => {
-      addComment(post.id, text)
-      setText('')
-    }, 'add a comment')
+    const filtered = filterTextContent(text)
+    setBlockedTerms(filtered.matches)
+    if (!filtered.allowed) return
+    addComment(post.id, text)
+    setText('')
   }
 
   return (
@@ -44,9 +46,10 @@ export default function CommentsSheet({ post, open, onClose }) {
       <form onSubmit={submit} className="mt-4 flex items-center gap-2 border-t border-gray-100 dark:border-white/10 pt-4">
         <input
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => { setText(e.target.value); setBlockedTerms([]) }}
           placeholder={t('add_comment')}
-          className="focus-ring flex-1 rounded-full border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 px-4 py-2.5 text-sm outline-none"
+          aria-invalid={blockedTerms.length > 0}
+          className={`focus-ring flex-1 rounded-full border bg-white dark:bg-white/5 px-4 py-2.5 text-sm outline-none ${blockedTerms.length ? 'border-red-500' : 'border-gray-200 dark:border-white/10'}`}
         />
         <button
           type="submit"
@@ -56,6 +59,7 @@ export default function CommentsSheet({ post, open, onClose }) {
           <Send size={16} />
         </button>
       </form>
+      <ContentFilterWarning matches={blockedTerms} />
     </Modal>
   )
 }

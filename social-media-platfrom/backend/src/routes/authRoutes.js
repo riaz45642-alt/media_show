@@ -1,12 +1,10 @@
 import { Router } from 'express'
-import { signup, login, verifyFace, firebaseLogin } from '../controllers/authController.js'
+import { signup, login, firebaseLogin } from '../controllers/authController.js'
 import { validateBody } from '../middleware/validate.js'
 import { rateLimit } from '../middleware/rateLimit.js'
-import { requireAuth } from '../middleware/authMiddleware.js'
 
 const router = Router()
 const authLimiter = rateLimit({ windowMs: 60_000, max: 10 })
-const faceLimiter = rateLimit({ windowMs: 60_000, max: 15 })
 
 router.post(
   '/signup',
@@ -16,21 +14,8 @@ router.post(
     email: { required: true, type: 'string', email: true, maxLength: 120 },
     password: { required: true, type: 'string', minLength: 8, maxLength: 200 },
     age: { required: true, type: 'number', min: 5, max: 120 },
-    gender: { type: 'string', oneOf: ['', 'male', 'female', 'other'] },
   }),
   signup
-)
-
-router.post(
-  '/verify-face',
-  faceLimiter,
-  requireAuth,
-  validateBody({
-    imageBase64: { required: true, type: 'string', maxLength: 3_000_000 },
-    imageBase64Second: { required: true, type: 'string', maxLength: 3_000_000 },
-    imageMimeType: { type: 'string', maxLength: 60 },
-  }),
-  verifyFace
 )
 
 router.post(

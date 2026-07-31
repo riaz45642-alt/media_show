@@ -46,30 +46,6 @@ function storeSession({ user, token }) {
   return user
 }
 
-export async function verifyFaceLiveness(firstFrameBase64, secondFrameBase64) {
-  if (!backendIsUsableFromThisPage()) {
-    throw new Error('Face verification requires the deployed API. Configure VITE_API_URL with your backend HTTPS URL.')
-  }
-  if (getStoredUser()?._firebaseOnly) {
-    const firebaseIdToken = localStorage.getItem(TOKEN_KEY)
-    if (!firebaseIdToken) throw new Error('Your session has expired. Log in again before verification.')
-    storeSession(await request('/auth/firebase', {
-      method: 'POST',
-      body: JSON.stringify({ idToken: firebaseIdToken }),
-    }))
-  }
-  const data = await request('/auth/verify-face', {
-    method: 'POST',
-    body: JSON.stringify({
-      imageBase64: firstFrameBase64,
-      imageBase64Second: secondFrameBase64,
-      imageMimeType: 'image/jpeg',
-    }),
-  })
-  if (data.verified) updateStoredUser({ face_verified: true, faceVerified: true, face_verified_at: data.verifiedAt })
-  return data
-}
-
 export async function signup(userData) {
   if (!backendIsUsableFromThisPage()) throw new Error('Account creation requires the production API.')
   return storeSession(await request('/auth/signup', {
@@ -79,7 +55,6 @@ export async function signup(userData) {
       email: userData.email,
       password: userData.password,
       age: Number(userData.age),
-      gender: userData.gender || '',
     }),
   }))
 }

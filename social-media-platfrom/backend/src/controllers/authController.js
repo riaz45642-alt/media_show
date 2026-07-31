@@ -3,11 +3,7 @@ import bcrypt from 'bcryptjs'
 import { pool } from '../config/db.js'
 import { generateToken } from '../utils/generateToken.js'
 import { validateDisplayName } from '../services/ruleBasedFilter.js'
-import { analyzeFaceLiveness } from '../services/geminiService.js'
 import { firebaseAdminAuth, firebaseRevocationChecksEnabled } from '../services/firebaseAdmin.js'
-import { evaluateFaceVerification } from '../services/faceVerificationDecision.js'
-
-const ALLOWED_GENDERS = new Set(['male', 'female', 'other', ''])
 
 function ageGroupFor(age) {
   if (age < 13) return 'kids'
@@ -15,65 +11,9 @@ function ageGroupFor(age) {
   return 'adult'
 }
 
-export async function verifyFace(req, res, next) {
-  try {
-    const { imageBase64, imageBase64Second, imageMimeType } = req.body
-    const result = await analyzeFaceLiveness({
-      base64: imageBase64,
-      secondBase64: imageBase64Second,
-      mimeType: imageMimeType,
-    })
-    if (!result.available) {
-      return res.status(503).json({
-        verified: false,
-        code: 'VERIFICATION_PROVIDER_UNAVAILABLE',
-        message: 'Verification is temporarily unavailable. Please try again shortly.',
-      })
-    }
-
-    const decision = evaluateFaceVerification(result)
-    if (!decision.verified) {
-      return res.status(422).json({
-        verified: false,
-        code: decision.code,
-        reason: decision.reason,
-      })
-    }
-
-    const client = await pool.connect()
-    try {
-      await client.query('BEGIN')
-      const { rows } = await client.query(
-        `INSERT INTO verification_sessions
-           (user_id, status, provider, attempt_count, risk_score, verified_at, expires_at)
-         VALUES ($1, 'verified', 'liveness', 1, $2, now(), now() + interval '10 minutes')
-         RETURNING id, verified_at`,
-        [req.user.id, Math.max(0, 100 - (result.confidence || 0))]
-      )
-      await client.query(
-        `INSERT INTO user_verification_status (user_id, status, verified_session_id, verified_at)
-         VALUES ($1, 'verified', $2, $3)
-         ON CONFLICT (user_id) DO UPDATE SET
-           status = 'verified', verified_session_id = EXCLUDED.verified_session_id,
-           verified_at = EXCLUDED.verified_at, revoked_at = NULL, updated_at = now()`,
-        [req.user.id, rows[0].id, rows[0].verified_at]
-      )
-      await client.query('COMMIT')
-      res.json({ verified: true, verifiedAt: rows[0].verified_at })
-    } catch (error) {
-      await client.query('ROLLBACK')
-      throw error
-    } finally {
-      client.release()
-    }
-  } catch (error) {
-    next(error)
-  }
-}
-
 export async function signup(req, res, next) {
   try {
-    const { name, email, password, age, gender } = req.body
+    const { name, email, password, age } = req.body
     const usernameCheck = validateDisplayName(name)
     if (!usernameCheck.valid) {
       return res.status(422).json({
@@ -85,7 +25,6 @@ export async function signup(req, res, next) {
 
     const passwordHash = await bcrypt.hash(password, 12)
     const ageGroup = ageGroupFor(Number(age))
-    const safeGender = ALLOWED_GENDERS.has(gender) ? (gender || null) : null
     const usernameBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24) || 'member'
     const username = `${usernameBase}_${crypto.randomUUID().slice(0, 6)}`
     const birthDate = new Date()
@@ -102,12 +41,11 @@ export async function signup(req, res, next) {
       )
       user = rows[0]
       await client.query(
-        `INSERT INTO user_profiles (user_id, username, display_name, date_of_birth, age_group, gender)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [user.id, username, name, birthDate.toISOString().slice(0, 10), ageGroup, safeGender]
+        `INSERT INTO user_profiles (user_id, username, display_name, date_of_birth, age_group)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [user.id, username, name, birthDate.toISOString().slice(0, 10), ageGroup]
       )
       await client.query('INSERT INTO user_settings (user_id) VALUES ($1)', [user.id])
-      await client.query('INSERT INTO user_verification_status (user_id) VALUES ($1)', [user.id])
       await client.query(
         `INSERT INTO auth_identities (user_id, provider, provider_subject, provider_email)
          VALUES ($1, 'password', $2, $3)`,
@@ -121,7 +59,7 @@ export async function signup(req, res, next) {
       client.release()
     }
 
-    user = { ...user, name, username, age: Number(age), age_group: ageGroup, gender: safeGender, face_verified: false }
+    user = { ...user, name, username, age: Number(age), age_group: ageGroup }
     res.status(201).json({ user, token: generateToken({ id: user.id }) })
   } catch (error) {
     if (error.code === '23505') {
@@ -135,14 +73,10 @@ export async function login(req, res, next) {
   try {
     const { email, password } = req.body
     const { rows } = await pool.query(
-      `SELECT u.*, p.display_name AS name, p.username, p.date_of_birth, p.age_group, p.gender,
-              p.bio, p.safe_zone_score,
-              (v.status = 'verified' AND v.revoked_at IS NULL
-                AND (v.reverify_after IS NULL OR v.reverify_after > now())) AS face_verified,
-              v.verified_at AS face_verified_at
+      `SELECT u.*, p.display_name AS name, p.username, p.date_of_birth, p.age_group,
+              p.bio, p.safe_zone_score
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
-       LEFT JOIN user_verification_status v ON v.user_id = u.id
        WHERE u.email = $1 AND u.deleted_at IS NULL`,
       [email.toLowerCase()]
     )
@@ -244,10 +178,6 @@ export async function firebaseLogin(req, res, next) {
         [userId]
       )
       await client.query(
-        `INSERT INTO user_verification_status (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`,
-        [userId]
-      )
-      await client.query(
         `UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()), last_login_at = now()
          WHERE id = $1`,
         [userId]
@@ -262,13 +192,9 @@ export async function firebaseLogin(req, res, next) {
 
     const { rows } = await pool.query(
       `SELECT u.id, u.email, u.role, u.status, u.created_at,
-              p.display_name AS name, p.username, p.date_of_birth, p.age_group, p.gender,
-              p.bio, p.safe_zone_score, $2::text AS avatar,
-              (v.status = 'verified' AND v.revoked_at IS NULL
-                AND (v.reverify_after IS NULL OR v.reverify_after > now())) AS face_verified,
-              v.verified_at AS face_verified_at
+              p.display_name AS name, p.username, p.date_of_birth, p.age_group,
+              p.bio, p.safe_zone_score, $2::text AS avatar
        FROM users u JOIN user_profiles p ON p.user_id = u.id
-       LEFT JOIN user_verification_status v ON v.user_id = u.id
        WHERE u.id = $1`,
       [userId, decoded.picture || null]
     )

@@ -5,23 +5,25 @@ import Button from '../ui/Button'
 import { usePosts } from '../../context/PostsContext'
 import { useLanguage } from '../../context/LanguageContext'
 import useModeration from '../../hooks/useModeration'
-import { useVerificationGate } from '../../context/VerificationGateContext'
+import ContentFilterWarning from '../common/ContentFilterWarning'
+import { filterTextContent } from '../../utils/contentFilter'
 
 export default function CreatePostModal({ open, onClose }) {
   const { t } = useLanguage()
   const { addPost } = usePosts()
   const { checking, check } = useModeration()
-  const { requireVerification } = useVerificationGate()
   const fileRef = useRef(null)
 
   const [text, setText] = useState('')
   const [media, setMedia] = useState([]) // [{ type, src, file }]
   const [error, setError] = useState('')
+  const [blockedTerms, setBlockedTerms] = useState([])
 
   const reset = () => {
     setText('')
     setMedia([])
     setError('')
+    setBlockedTerms([])
   }
 
   const handleClose = () => {
@@ -60,6 +62,9 @@ export default function CreatePostModal({ open, onClose }) {
 
   const publish = async () => {
     setError('')
+    const filtered = filterTextContent(text)
+    setBlockedTerms(filtered.matches)
+    if (!filtered.allowed) return
     const result = await check({ text, image: media[0]?.file })
     if (result.serviceUnavailable) {
       setError('Content review is temporarily unavailable. Please try again shortly.')
@@ -80,17 +85,17 @@ export default function CreatePostModal({ open, onClose }) {
     onClose()
   }
 
-  const handleSubmit = () => requireVerification(publish, media.length ? 'upload media and publish this post' : 'publish this post')
-
   return (
     <Modal open={open} onClose={handleClose} title={t('create_post')}>
       <textarea
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => { setText(e.target.value); setBlockedTerms([]) }}
         placeholder={t('write_caption')}
         rows={3}
-        className="focus-ring w-full resize-none rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 px-4 py-3 text-sm text-gray-800 dark:text-gray-100 placeholder:text-gray-400 outline-none"
+        aria-invalid={blockedTerms.length > 0}
+        className={`focus-ring w-full resize-none rounded-2xl border bg-white dark:bg-white/5 px-4 py-3 text-sm text-gray-800 dark:text-gray-100 placeholder:text-gray-400 outline-none ${blockedTerms.length ? 'border-red-500' : 'border-gray-200 dark:border-white/10'}`}
       />
+      <ContentFilterWarning matches={blockedTerms} />
 
       {media.length > 0 && (
         <div className="mt-3 grid grid-cols-3 gap-2">
@@ -140,7 +145,7 @@ export default function CreatePostModal({ open, onClose }) {
         <Button variant="ghost" className="flex-1" onClick={handleClose}>
           {t('cancel')}
         </Button>
-        <Button variant="primary" className="flex-1" disabled={!canPost || checking} onClick={handleSubmit}>
+        <Button variant="primary" className="flex-1" disabled={!canPost || checking} onClick={publish}>
           {checking ? t('checking_content') : t('post')}
         </Button>
       </div>

@@ -6,6 +6,8 @@ import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
 import Avatar from '../components/ui/Avatar'
 import { useAuth } from '../context/AuthContext'
+import ContentFilterWarning from '../components/common/ContentFilterWarning'
+import { filterTextContent } from '../utils/contentFilter'
 
 export default function EditProfile() {
   const { user, updateUser } = useAuth()
@@ -14,10 +16,10 @@ export default function EditProfile() {
     name: user?.name || '',
     age: user?.age || '',
     bio: user?.bio || '',
-    gender: user?.gender || '',
   })
   const [avatarPreview, setAvatarPreview] = useState(user?.avatar || '')
   const [saved, setSaved] = useState(false)
+  const [blockedTerms, setBlockedTerms] = useState([])
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
   const handleAvatar = (e) => {
@@ -33,6 +35,9 @@ export default function EditProfile() {
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    const filtered = filterTextContent(`${form.name} ${form.bio}`)
+    setBlockedTerms(filtered.matches)
+    if (!filtered.allowed) return
     updateUser({ ...form, avatar: avatarPreview })
     setSaved(true)
     setTimeout(() => navigate('/profile'), 700)
@@ -56,23 +61,6 @@ export default function EditProfile() {
         <Input label="Full name" icon={User} name="name" value={form.name} onChange={handleChange} />
         <Input label="Age" icon={Cake} type="number" name="age" value={form.age} onChange={handleChange} />
 
-        <div>
-          <label className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">
-            Gender <span className="font-normal text-gray-400">(set by you)</span>
-          </label>
-          <select
-            name="gender"
-            value={form.gender}
-            onChange={handleChange}
-            className="w-full rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 focus-ring"
-          >
-            <option value="">Prefer not to say</option>
-            <option value="female">Woman</option>
-            <option value="male">Man</option>
-            <option value="other">Non-binary</option>
-          </select>
-        </div>
-
         <Input
           label="Bio"
           icon={FileText}
@@ -80,8 +68,9 @@ export default function EditProfile() {
           textarea
           placeholder="Tell others a little about you..."
           value={form.bio}
-          onChange={handleChange}
+          onChange={(e) => { handleChange(e); setBlockedTerms([]) }}
         />
+        <ContentFilterWarning matches={blockedTerms} />
 
         <Button type="submit" fullWidth size="lg">
           {saved ? 'Saved ✓' : 'Save Changes'}

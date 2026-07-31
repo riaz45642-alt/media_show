@@ -6,17 +6,10 @@ import Button from '../components/ui/Button'
 import { useAuth } from '../context/AuthContext'
 import { getAgeGroup, AGE_GROUP_LABEL, AGE_GROUP_DESC } from '../utils/ageGroup'
 
-const GENDER_OPTIONS = [
-  { value: '', label: 'Prefer not to say' },
-  { value: 'female', label: 'Woman' },
-  { value: 'male', label: 'Man' },
-  { value: 'other', label: 'Non-binary' },
-]
-
 export default function Signup() {
   const { signup, continueWithGoogle } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ name: '', email: '', password: '', age: '', gender: '' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', age: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const ageGroup = form.age ? getAgeGroup(form.age) : null
@@ -39,7 +32,7 @@ export default function Signup() {
       <div className="mb-6">
         <p className="auth-eyebrow">Join the community</p>
         <h2 className="font-display text-2xl font-bold text-gray-900 dark:text-white">Create your account</h2>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Start exploring now. Verification is only needed when you interact.</p>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Start exploring and sharing with the community.</p>
       </div>
 
       <button type="button" className="google-button" onClick={() => run(continueWithGoogle)} disabled={loading}>
@@ -52,12 +45,6 @@ export default function Signup() {
         <Input label="Email" icon={Mail} type="email" name="email" required placeholder="you@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <Input label="Password" icon={Lock} type="password" name="password" minLength="8" required placeholder="At least 8 characters" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         <Input label="Age" icon={Cake} type="number" name="age" min="6" max="99" required placeholder="e.g. 14" value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} />
-        <div>
-          <label className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">Gender <span className="font-normal">(optional)</span></label>
-          <select name="gender" value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })} className="focus-ring w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm dark:border-white/10 dark:bg-white/5">
-            {GENDER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </div>
         {ageGroup && (
           <div className="flex items-start gap-2.5 rounded-2xl bg-secondary/10 p-3.5">
             <ShieldCheck size={18} className="mt-0.5 shrink-0 text-secondary-dark" />

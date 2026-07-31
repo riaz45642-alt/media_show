@@ -1,34 +1,34 @@
 import { useRef, useState } from 'react'
 import { Send, Smile, Image as ImageIcon, X, CornerUpLeft } from 'lucide-react'
 import EmojiPicker from './EmojiPicker'
-import { useVerificationGate } from '../../context/VerificationGateContext'
+import ContentFilterWarning from '../common/ContentFilterWarning'
+import { filterTextContent } from '../../utils/contentFilter'
 
 export default function ChatComposer({ onSend, replyTo, onCancelReply }) {
   const [text, setText] = useState('')
   const [emojiOpen, setEmojiOpen] = useState(false)
   const fileInputRef = useRef(null)
-  const { requireVerification } = useVerificationGate()
+  const [blockedTerms, setBlockedTerms] = useState([])
 
   const send = (e) => {
     e.preventDefault()
     const trimmed = text.trim()
     if (!trimmed) return
+    const filtered = filterTextContent(trimmed)
+    setBlockedTerms(filtered.matches)
+    if (!filtered.allowed) return
     const isLink = /^https?:\/\/\S+$/i.test(trimmed)
-    requireVerification(() => {
-      onSend({ type: isLink ? 'link' : 'text', text: trimmed, replyTo: replyTo?.id || null })
-      setText('')
-      setEmojiOpen(false)
-    }, 'send a message')
+    onSend({ type: isLink ? 'link' : 'text', text: trimmed, replyTo: replyTo?.id || null })
+    setText('')
+    setEmojiOpen(false)
   }
 
   const handleFile = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    requireVerification(() => {
-      const url = URL.createObjectURL(file)
-      const isVideo = file.type.startsWith('video/')
-      onSend({ type: isVideo ? 'video' : 'image', mediaUrl: url, replyTo: replyTo?.id || null })
-    }, 'upload and send media')
+    const url = URL.createObjectURL(file)
+    const isVideo = file.type.startsWith('video/')
+    onSend({ type: isVideo ? 'video' : 'image', mediaUrl: url, replyTo: replyTo?.id || null })
     e.target.value = ''
   }
 
@@ -70,9 +70,10 @@ export default function ChatComposer({ onSend, replyTo, onCancelReply }) {
         <div className="relative flex-1">
           <input
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => { setText(e.target.value); setBlockedTerms([]) }}
             placeholder="Type a message…"
-            className="focus-ring w-full rounded-full border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 px-4 py-2.5 pr-10 text-sm outline-none"
+            aria-invalid={blockedTerms.length > 0}
+            className={`focus-ring w-full rounded-full border bg-white dark:bg-white/5 px-4 py-2.5 pr-10 text-sm outline-none ${blockedTerms.length ? 'border-red-500' : 'border-gray-200 dark:border-white/10'}`}
           />
           <button
             type="button"
@@ -94,6 +95,7 @@ export default function ChatComposer({ onSend, replyTo, onCancelReply }) {
           <Send size={16} />
         </button>
       </form>
+      <ContentFilterWarning matches={blockedTerms} />
     </div>
   )
 }

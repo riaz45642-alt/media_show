@@ -1,7 +1,6 @@
 import { Router } from 'express'
 import { listComments, createComment } from '../controllers/commentController.js'
 import { requireAuth } from '../middleware/authMiddleware.js'
-import { requireVerified } from '../middleware/requireVerified.js'
 import { validateBody } from '../middleware/validate.js'
 import { rateLimit } from '../middleware/rateLimit.js'
 
@@ -12,7 +11,6 @@ router.get('/', listComments)
 router.post(
   '/',
   requireAuth,
-  requireVerified,
   rateLimit({ windowMs: 60_000, max: 20 }),
   validateBody({ text: { required: true, type: 'string', minLength: 1, maxLength: 2000 } }),
   createComment
