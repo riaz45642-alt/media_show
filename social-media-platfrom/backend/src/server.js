@@ -22,6 +22,7 @@ import presenceRoutes from './routes/presenceRoutes.js'
 import { initSocket } from './sockets/index.js'
 import { checkDatabase } from './config/db.js'
 import { corsOriginCallback } from './config/cors.js'
+import { uploadDirectory } from './middleware/postUpload.js'
 
 dotenv.config()
 
@@ -30,12 +31,18 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
 }
 
 const app = express()
+app.set('trust proxy', 1)
 
 app.use(cors({
   origin: corsOriginCallback,
 }))
 // Cap request body size to guard against oversized payloads.
 app.use(express.json({ limit: '2mb' }))
+app.use('/uploads', express.static(uploadDirectory, {
+  immutable: true,
+  maxAge: '1y',
+  fallthrough: false,
+}))
 app.use((req, res, next) => {
   req.requestId = req.get('x-request-id') || crypto.randomUUID()
   res.setHeader('X-Request-Id', req.requestId)

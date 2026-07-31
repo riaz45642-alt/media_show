@@ -23,19 +23,38 @@ export function PostsProvider({ children }) {
   ])
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-  const normalizePost = useCallback((post) => ({
-    id: post.id,
-    author: post.author || user?.name || 'Member',
-    authorId: post.author_id || post.user_id,
-    time: new Date(post.created_at).toLocaleString(),
-    type: 'text',
-    text: post.body ?? post.text_content ?? '',
-    media: [],
-    likes: Number(post.like_count ?? post.likes_count ?? 0),
-    comments: [],
-    safe: post.moderation_status === 'safe',
-    own: (post.author_id || post.user_id) === user?.id,
-  }), [user?.id, user?.name])
+  const normalizePost = useCallback((post) => {
+    const media = Array.isArray(post.media) ? post.media.map((item) => ({
+      id: item.id,
+      type: item.type,
+      src: item.url || item.src,
+      mimeType: item.mimeType || item.mime_type,
+    })) : []
+    const comments = Array.isArray(post.comments) ? post.comments.map((comment) => ({
+      id: comment.id,
+      author: comment.author || 'Member',
+      authorId: comment.user_id,
+      avatarSrc: comment.avatar_url,
+      text: comment.text_content ?? comment.body ?? '',
+      createdAt: comment.created_at,
+    })) : []
+    return {
+      id: post.id,
+      author: post.author || user?.name || 'Member',
+      authorId: post.author_id || post.user_id,
+      avatarSrc: post.avatar_url,
+      time: new Date(post.published_at || post.created_at).toLocaleString(),
+      type: media.length ? (media.length > 1 ? 'mixed' : media[0].type) : 'text',
+      text: post.body ?? post.text_content ?? '',
+      media,
+      likes: Number(post.like_count ?? post.likes_count ?? 0),
+      comments,
+      commentCount: Math.max(Number(post.comment_count ?? 0), comments.length),
+      shares: Number(post.share_count ?? 0),
+      safe: post.moderation_status === 'safe',
+      own: (post.author_id || post.user_id) === user?.id,
+    }
+  }, [user?.id, user?.name])
 
   useEffect(() => {
     let active = true
@@ -77,22 +96,36 @@ export function PostsProvider({ children }) {
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data.message || 'Comment could not be added')
-    const comment = { id: data.comment.id, author: user?.name || 'You', text: data.comment.text_content }
+    const comment = {
+      id: data.comment.id,
+      author: user?.name || data.comment.author || 'You',
+      avatarSrc: user?.avatar,
+      text: data.comment.text_content,
+      createdAt: data.comment.created_at,
+    }
     setPosts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, comments: [...p.comments, comment] } : p))
+      prev.map((p) => (p.id === id ? {
+        ...p,
+        comments: [...p.comments, comment],
+        commentCount: Number(data.commentCount ?? p.commentCount + 1),
+      } : p))
     )
+    return comment
   }
 
   const incrementShare = (id) => {
     setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, shares: (p.shares || 0) + 1 } : p)))
   }
 
-  const addPost = async ({ text }) => {
+  const addPost = async ({ text, media = [] }) => {
     const token = localStorage.getItem('mediashow_token')
+    const body = new FormData()
+    body.append('text', text || '')
+    media.forEach((item) => body.append('media', item.file))
     const response = await fetch(`${API_URL}/posts`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ text }),
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body,
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data.message || 'Post could not be published')

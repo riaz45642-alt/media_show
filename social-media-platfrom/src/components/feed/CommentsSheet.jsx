@@ -12,17 +12,23 @@ export default function CommentsSheet({ post, open, onClose }) {
   const { addComment } = usePosts()
   const [text, setText] = useState('')
   const [blockedTerms, setBlockedTerms] = useState([])
+  const [error, setError] = useState('')
 
   if (!post) return null
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     if (!text.trim()) return
     const filtered = filterTextContent(text)
     setBlockedTerms(filtered.matches)
     if (!filtered.allowed) return
-    addComment(post.id, text)
-    setText('')
+    try {
+      await addComment(post.id, text)
+      setText('')
+      setError('')
+    } catch (submitError) {
+      setError(submitError.message)
+    }
   }
 
   return (
@@ -46,7 +52,7 @@ export default function CommentsSheet({ post, open, onClose }) {
       <form onSubmit={submit} className="mt-4 flex items-center gap-2 border-t border-gray-100 dark:border-white/10 pt-4">
         <input
           value={text}
-          onChange={(e) => { setText(e.target.value); setBlockedTerms([]) }}
+          onChange={(e) => { setText(e.target.value); setBlockedTerms([]); setError('') }}
           placeholder={t('add_comment')}
           aria-invalid={blockedTerms.length > 0}
           className={`focus-ring flex-1 rounded-full border bg-white dark:bg-white/5 px-4 py-2.5 text-sm outline-none ${blockedTerms.length ? 'border-red-500' : 'border-gray-200 dark:border-white/10'}`}
@@ -60,6 +66,7 @@ export default function CommentsSheet({ post, open, onClose }) {
         </button>
       </form>
       <ContentFilterWarning matches={blockedTerms} />
+      {error && <p role="alert" className="mt-2 text-xs text-red-500">{error}</p>}
     </Modal>
   )
 }

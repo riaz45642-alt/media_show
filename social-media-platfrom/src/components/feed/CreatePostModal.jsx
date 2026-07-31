@@ -34,7 +34,12 @@ export default function CreatePostModal({ open, onClose }) {
   }
 
   const handleFiles = (e) => {
-    const files = Array.from(e.target.files || [])
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm'])
+    const selected = Array.from(e.target.files || [])
+    const files = selected.filter((file) => allowedTypes.has(file.type) && file.size <= 50 * 1024 * 1024)
+    if (files.length !== selected.length) {
+      setError('Use JPEG, PNG, WebP, GIF, MP4, or WebM files up to 50 MB each.')
+    }
     const items = files.map((file) => ({
       type: file.type.startsWith('video') ? 'video' : 'image',
       src: URL.createObjectURL(file),
@@ -76,7 +81,7 @@ export default function CreatePostModal({ open, onClose }) {
     }
     const type = media.length === 0 ? 'text' : media.length > 1 ? 'mixed' : media[0].type
     try {
-      await addPost({ text, media: media.map(({ type: mt, src }) => ({ type: mt, src })), type })
+      await addPost({ text, media, type })
     } catch (err) {
       setError(err.message)
       return
@@ -121,7 +126,7 @@ export default function CreatePostModal({ open, onClose }) {
       <input
         ref={fileRef}
         type="file"
-        accept="image/*,video/*"
+        accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm"
         multiple
         onChange={handleFiles}
         className="hidden"

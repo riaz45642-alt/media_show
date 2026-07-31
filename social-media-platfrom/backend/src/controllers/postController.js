@@ -1,12 +1,57 @@
 import { pool } from '../config/db.js'
 import { moderate } from '../services/moderationService.js'
+import fs from 'node:fs/promises'
+
+const POST_SELECT = `
+  SELECT p.*, p.author_id AS user_id, p.body AS text_content,
+         p.like_count AS likes_count, up.display_name AS author,
+         avatar.storage_path AS avatar_url,
+         media.items AS media,
+         media.image_url,
+         media.video_url,
+         comments.items AS comments
+  FROM posts p
+  JOIN user_profiles up ON up.user_id = p.author_id
+  LEFT JOIN media_assets avatar ON avatar.id = up.avatar_media_id AND avatar.deleted_at IS NULL
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(
+             jsonb_agg(jsonb_build_object(
+               'id', ma.id, 'type', ma.kind, 'url', ma.storage_path,
+               'mimeType', ma.mime_type, 'position', pm.position
+             ) ORDER BY pm.position), '[]'::jsonb
+           ) AS items,
+           min(ma.storage_path) FILTER (WHERE ma.kind = 'image') AS image_url,
+           min(ma.storage_path) FILTER (WHERE ma.kind = 'video') AS video_url
+    FROM post_media pm
+    JOIN media_assets ma ON ma.id = pm.media_id AND ma.deleted_at IS NULL
+    WHERE pm.post_id = p.id
+  ) media ON true
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(
+             jsonb_agg(jsonb_build_object(
+               'id', c.id, 'text_content', c.body, 'author', cup.display_name,
+               'user_id', c.author_id, 'created_at', c.created_at,
+               'avatar_url', ca.storage_path
+             ) ORDER BY c.created_at), '[]'::jsonb
+           ) AS items
+    FROM comments c
+    JOIN user_profiles cup ON cup.user_id = c.author_id
+    LEFT JOIN media_assets ca ON ca.id = cup.avatar_media_id AND ca.deleted_at IS NULL
+    WHERE c.post_id = p.id AND c.deleted_at IS NULL AND c.moderation_status = 'safe'
+  ) comments ON true`
+
+function publicApiOrigin(req) {
+  return (process.env.PUBLIC_API_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
+}
+
+function mediaKind(mimeType) {
+  return mimeType.startsWith('video/') ? 'video' : 'image'
+}
 
 export async function listPosts(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `SELECT p.*, p.author_id AS user_id, p.body AS text_content,
-              p.like_count AS likes_count, up.display_name AS author
-       FROM posts p JOIN user_profiles up ON up.user_id = p.author_id
+      `${POST_SELECT}
        WHERE p.moderation_status = 'safe' AND p.deleted_at IS NULL
        ORDER BY p.published_at DESC NULLS LAST, p.created_at DESC LIMIT 50`
     )
@@ -18,24 +63,62 @@ export async function listPosts(req, res, next) {
 
 export async function createPost(req, res, next) {
   try {
-    const { text, imageBase64, imageMimeType } = req.body
-    const image = imageBase64 ? { base64: imageBase64, mimeType: imageMimeType } : undefined
+    const { text } = req.body
+    const files = req.files || []
+    if (!text?.trim() && files.length === 0) {
+      return res.status(400).json({ message: 'Post needs text, an image, or a video' })
+    }
+    const firstImage = files.find((file) => file.mimetype.startsWith('image/'))
+    const image = firstImage ? {
+      base64: (await fs.readFile(firstImage.path)).toString('base64'),
+      mimeType: firstImage.mimetype,
+      sizeBytes: firstImage.size,
+    } : undefined
 
-    const result = await moderate({ text, image, userId: req.user.id, contentType: 'post' })
+    let result
+    try {
+      result = await moderate({ text, image, userId: req.user.id, contentType: 'post' })
+    } catch (error) {
+      await Promise.allSettled(files.map((file) => fs.unlink(file.path)))
+      throw error
+    }
+    const client = await pool.connect()
+    let post
+    try {
+      await client.query('BEGIN')
+      const { rows } = await client.query(
+        `INSERT INTO posts (author_id, body, moderation_status, risk_score, moderation_reason, published_at)
+         VALUES ($1,$2,$3::moderation_state,$4,$5,
+                 CASE WHEN $3::moderation_state = 'safe'::moderation_state THEN now() ELSE NULL END)
+         RETURNING *`,
+        [req.user.id, text || '', result.status, result.riskScore, result.reason]
+      )
+      post = rows[0]
 
-    const { rows } = await pool.query(
-      `INSERT INTO posts (author_id, body, moderation_status, risk_score, moderation_reason, published_at)
-       VALUES ($1,$2,$3::moderation_state,$4,$5,
-               CASE WHEN $3::moderation_state = 'safe'::moderation_state THEN now() ELSE NULL END)
-       RETURNING *, author_id AS user_id, body AS text_content, like_count AS likes_count`,
-      [
-        req.user.id,
-        text || '',
-        result.status,
-        result.riskScore,
-        result.reason,
-      ]
-    )
+      for (const [position, file] of files.entries()) {
+        const url = `${publicApiOrigin(req)}/uploads/${encodeURIComponent(file.filename)}`
+        const asset = await client.query(
+          `INSERT INTO media_assets
+             (owner_id, kind, storage_bucket, storage_path, mime_type, byte_size, moderation_status)
+           VALUES ($1,$2::media_kind,'uploads',$3,$4,$5,$6::moderation_state)
+           RETURNING id`,
+          [req.user.id, mediaKind(file.mimetype), url, file.mimetype, file.size, result.status]
+        )
+        await client.query(
+          `INSERT INTO post_media (post_id, media_id, position) VALUES ($1,$2,$3)`,
+          [post.id, asset.rows[0].id, position]
+        )
+      }
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK')
+      await Promise.allSettled(files.map((file) => fs.unlink(file.path)))
+      throw error
+    } finally {
+      client.release()
+    }
+
+    const { rows } = await pool.query(`${POST_SELECT} WHERE p.id = $1`, [post.id])
 
     if (result.status === 'rejected') {
       return res.status(422).json({ message: 'Post rejected by moderation', reason: result.reason, post: rows[0] })

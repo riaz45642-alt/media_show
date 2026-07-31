@@ -27,21 +27,25 @@ export async function createComment(req, res, next) {
     const { rows } = await pool.query(
       `INSERT INTO comments (post_id, author_id, body, moderation_status, risk_score, moderation_reason)
        VALUES ($1,$2,$3,$4::moderation_state,$5,$6)
-       RETURNING id, body AS text_content, created_at, moderation_status`,
+       RETURNING id, body AS text_content, created_at, moderation_status, author_id AS user_id`,
       [postId, req.user.id, text, result.status, result.riskScore, result.reason]
     )
 
     if (result.status === 'rejected') {
       return res.status(422).json({ message: 'Comment rejected by moderation', reason: result.reason })
     }
-    await pool.query(
+    const countResult = await pool.query(
       `UPDATE posts SET comment_count = (
          SELECT count(*) FROM comments WHERE post_id = $1 AND deleted_at IS NULL AND moderation_status = 'safe'
-       ) WHERE id = $1`,
+       ) WHERE id = $1 RETURNING comment_count`,
       [postId]
     )
 
-    res.status(201).json({ comment: rows[0], moderation: result })
+    res.status(201).json({
+      comment: { ...rows[0], author: req.user.name || 'Member' },
+      commentCount: Number(countResult.rows[0]?.comment_count || 0),
+      moderation: result,
+    })
   } catch (err) {
     next(err)
   }

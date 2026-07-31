@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Heart, MessageCircle, Share2, Bookmark, Check, X } from 'lucide-react'
+import { Heart, MessageCircle, Share2, Bookmark, Check, X, Send } from 'lucide-react'
 import Avatar from '../ui/Avatar'
 import SafeBadge from '../common/SafeBadge'
 import ContentFilterWarning from '../common/ContentFilterWarning'
@@ -12,7 +12,7 @@ import { useLanguage } from '../../context/LanguageContext'
 import { filterTextContent } from '../../utils/contentFilter'
 
 export default function PostCard({ post }) {
-  const { toggleLike, toggleSave, editPost } = usePosts()
+  const { toggleLike, toggleSave, editPost, addComment } = usePosts()
   const { t } = useLanguage()
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -20,6 +20,8 @@ export default function PostCard({ post }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(post.text || '')
   const [blockedTerms, setBlockedTerms] = useState([])
+  const [commentDraft, setCommentDraft] = useState('')
+  const [commentError, setCommentError] = useState('')
 
   const doubleTapLike = () => {
     if (!post.likedByMe) toggleLike(post.id)
@@ -33,6 +35,24 @@ export default function PostCard({ post }) {
     if (!filtered.allowed) return
     await editPost(post.id, draft.trim())
     setEditing(false)
+  }
+
+  const submitComment = async (event) => {
+    event.preventDefault()
+    const text = commentDraft.trim()
+    if (!text) return
+    const filtered = filterTextContent(text)
+    if (!filtered.allowed) {
+      setCommentError(`Please change: ${filtered.matches.join(', ')}`)
+      return
+    }
+    try {
+      await addComment(post.id, text)
+      setCommentDraft('')
+      setCommentError('')
+    } catch (error) {
+      setCommentError(error.message)
+    }
   }
 
   return (
@@ -105,7 +125,7 @@ export default function PostCard({ post }) {
               className="tap-scale flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400"
             >
               <MessageCircle size={19} />
-              {post.comments.length}
+              {post.commentCount}
             </button>
             <button onClick={() => setShareOpen(true)} className="tap-scale text-gray-500 dark:text-gray-400">
               <Share2 size={19} />
@@ -131,18 +151,49 @@ export default function PostCard({ post }) {
           </p>
         )}
 
+        <div className="mt-3 flex items-center gap-4 text-xs font-semibold text-gray-700 dark:text-gray-200">
+          <span>{post.likes} {post.likes === 1 ? 'like' : 'likes'}</span>
+          <button onClick={() => setCommentsOpen(true)} className="text-gray-500 dark:text-gray-400">
+            {post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}
+          </button>
+        </div>
+
+        {post.comments.slice(-2).map((comment) => (
+          <div key={comment.id} className="mt-2 flex items-start gap-2 text-sm">
+            <Avatar name={comment.author} src={comment.avatarSrc} size={26} />
+            <p className="min-w-0 flex-1 text-gray-700 dark:text-gray-200">
+              <span className="mr-1 font-semibold text-gray-900 dark:text-white">{comment.author}</span>
+              {comment.text}
+            </p>
+          </div>
+        ))}
+
+        <form onSubmit={submitComment} className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3 dark:border-white/10">
+          <Avatar name="You" size={28} />
+          <input
+            value={commentDraft}
+            onChange={(event) => { setCommentDraft(event.target.value); setCommentError('') }}
+            placeholder="Add a comment…"
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400"
+          />
+          <button type="submit" disabled={!commentDraft.trim()} aria-label="Post comment" className="text-primary disabled:opacity-40">
+            <Send size={17} />
+          </button>
+        </form>
+        {commentError && <p role="alert" className="mt-1 text-xs text-red-500">{commentError}</p>}
+
         {post.tag && (
           <span className="mt-2.5 inline-block rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
             #{post.tag}
           </span>
         )}
 
-        {post.comments.length > 0 && (
+        {post.commentCount > 2 && (
           <button
             onClick={() => setCommentsOpen(true)}
             className="mt-2 block text-sm text-gray-400 hover:text-gray-500"
           >
-            {t('view_all_comments', { n: post.comments.length })}
+            {t('view_all_comments', { n: post.commentCount })}
           </button>
         )}
       </div>
