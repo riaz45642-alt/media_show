@@ -1,0 +1,25 @@
+{
+  "name": "media-show-cloudflare",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build:cloudflare": "node cloudflare-build.mjs",
+    "deploy:cloudflare": "npm run build:cloudflare && wrangler pages deploy social-media-platfrom/dist --project-name media-show"
+  },
+  "dependencies": {
+    "firebase": "^12.16.0",
+    "lucide-react": "^0.446.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "vite": "^5.4.8",
+    "wrangler": "^4.27.0"
+  }
+}
