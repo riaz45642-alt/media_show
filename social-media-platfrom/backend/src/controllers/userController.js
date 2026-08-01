@@ -204,29 +204,31 @@ export async function listConnections(req, res, next) {
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20))
     const offset = Math.max(0, Number(req.query.offset) || 0)
     const access = await pool.query(
-      `SELECT p.display_name AS name, s.profile_visibility,
-              ($1 = $2 OR s.profile_visibility = 'public' OR EXISTS
+      `SELECT p.display_name AS name, COALESCE(s.profile_visibility, 'public'::visibility) AS profile_visibility,
+              ($1 = $2 OR COALESCE(s.profile_visibility, 'public'::visibility) = 'public' OR EXISTS
                 (SELECT 1 FROM follows WHERE follower_id = $2 AND followed_id = $1)) AS can_view
-       FROM users u JOIN user_profiles p ON p.user_id = u.id JOIN user_settings s ON s.user_id = u.id
+       FROM users u JOIN user_profiles p ON p.user_id = u.id LEFT JOIN user_settings s ON s.user_id = u.id
        WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL`,
       [targetId, req.user.id]
     )
     if (!access.rows[0]) return res.status(404).json({ message: 'User not found' })
     if (!access.rows[0].can_view) return res.status(403).json({ message: 'This account is private.' })
     const join = type === 'followers'
-      ? 'JOIN user_profiles p ON p.user_id = f.follower_id JOIN users u ON u.id = f.follower_id JOIN user_settings s ON s.user_id = f.follower_id'
-      : 'JOIN user_profiles p ON p.user_id = f.followed_id JOIN users u ON u.id = f.followed_id JOIN user_settings s ON s.user_id = f.followed_id'
+      ? 'JOIN user_profiles p ON p.user_id = f.follower_id JOIN users u ON u.id = f.follower_id LEFT JOIN user_settings s ON s.user_id = f.follower_id'
+      : 'JOIN user_profiles p ON p.user_id = f.followed_id JOIN users u ON u.id = f.followed_id LEFT JOIN user_settings s ON s.user_id = f.followed_id'
     const condition = type === 'followers' ? 'f.followed_id = $1' : 'f.follower_id = $1'
     const idColumn = type === 'followers' ? 'f.follower_id' : 'f.followed_id'
     const { rows } = await pool.query(
       `SELECT ${idColumn} AS id, p.display_name AS name, p.username,
-              avatar.storage_path AS avatar_url, (s.profile_visibility <> 'public') AS is_private,
+              avatar.storage_path AS avatar_url, (COALESCE(s.profile_visibility, 'public'::visibility) <> 'public') AS is_private,
               EXISTS (SELECT 1 FROM follows mine WHERE mine.follower_id = $2 AND mine.followed_id = ${idColumn}) AS is_following,
-              ($2 <> ${idColumn} AND s.messaging_enabled AND viewer_settings.messaging_enabled AND
-                (s.profile_visibility = 'public' OR EXISTS
+              ($2 <> ${idColumn}
+                AND COALESCE((to_jsonb(s)->>'messaging_enabled')::boolean, true)
+                AND COALESCE((to_jsonb(viewer_settings)->>'messaging_enabled')::boolean, true)
+                AND (COALESCE(s.profile_visibility, 'public'::visibility) = 'public' OR EXISTS
                   (SELECT 1 FROM follows approved WHERE approved.follower_id = $2 AND approved.followed_id = ${idColumn}))) AS can_message
        FROM follows f ${join}
-       JOIN user_settings viewer_settings ON viewer_settings.user_id = $2
+       LEFT JOIN user_settings viewer_settings ON viewer_settings.user_id = $2
        LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
        WHERE ${condition} AND u.status = 'active' AND u.deleted_at IS NULL
        ORDER BY f.created_at DESC, ${idColumn} DESC LIMIT $3 OFFSET $4`,
@@ -234,7 +236,18 @@ export async function listConnections(req, res, next) {
     )
     const hasMore = rows.length > limit
     res.json({ name: access.rows[0].name, users: rows.slice(0, limit), hasMore, nextOffset: hasMore ? offset + limit : null })
-  } catch (error) { next(error) }
+  } catch (error) {
+    console.error('listConnections failed:', {
+      targetId: req.params.id,
+      viewerId: req.user?.id,
+      type: req.query.type,
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      stack: error.stack,
+    })
+    next(error)
+  }
 }
 
 export async function getMe(req, res, next) {
