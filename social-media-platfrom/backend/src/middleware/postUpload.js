@@ -1,10 +1,44 @@
 import crypto from 'node:crypto'
 import path from 'node:path'
 import fs from 'node:fs'
+import os from 'node:os'
 import multer from 'multer'
 
-export const uploadDirectory = path.resolve(process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'))
-fs.mkdirSync(uploadDirectory, { recursive: true })
+function findWritableUploadDirectory() {
+  const configured = process.env.UPLOAD_DIR?.trim()
+  const candidates = [
+    configured && path.resolve(configured),
+    path.resolve(process.cwd(), 'uploads'),
+    path.join(os.tmpdir(), 'media-show-uploads'),
+  ].filter((candidate, index, all) => candidate && all.indexOf(candidate) === index)
+
+  let lastError
+  for (const candidate of candidates) {
+    try {
+      fs.mkdirSync(candidate, { recursive: true })
+      fs.accessSync(candidate, fs.constants.W_OK)
+      if (configured && candidate !== path.resolve(configured)) {
+        console.warn(JSON.stringify({
+          level: 'warn',
+          event: 'upload_directory_fallback',
+          configuredDirectory: configured,
+          uploadDirectory: candidate,
+        }))
+      }
+      return candidate
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  const error = new Error('No writable upload directory is available', { cause: lastError })
+  error.code = 'UPLOAD_DIRECTORY_UNAVAILABLE'
+  throw error
+}
+
+// Render Free has an ephemeral but writable filesystem. UPLOAD_DIR is optional;
+// when omitted, ./uploads is used. The OS temp directory is a final fallback.
+export const uploadDirectory = findWritableUploadDirectory()
 
 const ALLOWED_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
