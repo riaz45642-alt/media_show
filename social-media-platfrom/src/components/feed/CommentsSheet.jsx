@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Send } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import Modal from '../ui/Modal'
 import Avatar from '../ui/Avatar'
 import { useLanguage } from '../../context/LanguageContext'
@@ -39,9 +40,11 @@ export default function CommentsSheet({ post, open, onClose }) {
         ) : (
           post.comments.map((c) => (
             <div key={c.id} className="flex items-start gap-3">
-              <Avatar name={c.author} size={32} />
+              <Link to={`/users/${c.authorId}`} onClick={onClose} aria-label={`Open ${c.author}'s profile`}>
+                <Avatar name={c.author} src={c.avatar} size={32} />
+              </Link>
               <div className="flex-1 rounded-2xl bg-gray-50 dark:bg-white/5 px-3.5 py-2">
-                <p className="text-xs font-semibold text-gray-800 dark:text-gray-100">{c.author}</p>
+                <Link to={`/users/${c.authorId}`} onClick={onClose} className="text-xs font-semibold text-gray-800 hover:underline dark:text-gray-100">{c.author}</Link>
                 <p className="text-sm text-gray-600 dark:text-gray-300">{c.text}</p>
               </div>
             </div>

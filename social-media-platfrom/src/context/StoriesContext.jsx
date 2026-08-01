@@ -1,59 +1,59 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
-import { seedStories } from '../data/stories'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useAuth } from './AuthContext'
 
 const StoriesContext = createContext(null)
-
-let sid = 0
-const nextId = () => `mystory-${Date.now()}-${++sid}`
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('mediashow_token')}` })
+const normalize = (row, ownId) => ({ id: row.id, authorId: row.author_id, type: row.media_type, src: row.media_url, caption: row.caption || '', createdAt: row.created_at, expiresAt: row.expires_at, likedByMe: Boolean(row.liked_by_me), likes: Number(row.like_count || 0), viewed: Boolean(row.viewed), mine: row.author_id === ownId })
 
 export function StoriesProvider({ children }) {
-  const [storiesByUser, setStoriesByUser] = useState(() => seedStories())
-  // 'me' stories are kept separately so they always render first, and
-  // survive being added mid-session without touching the seed data.
-  const [myStories, setMyStories] = useState([])
-  const [viewed, setViewed] = useState(() => new Set())
+  const { user } = useAuth()
+  const userId = user?.id
+  const [storiesByUser, setStoriesByUser] = useState({})
+  const [authors, setAuthors] = useState({})
   const [activeEntryId, setActiveEntryId] = useState(null)
+  const [error, setError] = useState('')
 
-  const addStory = ({ type, src }) => {
-    const story = { id: nextId(), type, src, createdAt: new Date().toISOString(), likedByMe: false, likes: 0, mine: true }
-    setMyStories((prev) => [...prev, story])
-    return story
-  }
-
-  const markViewed = useCallback((storyId) => setViewed((prev) => new Set(prev).add(storyId)), [])
-
-  const toggleLikeStory = (userId, storyId) => {
-    const update = (list) =>
-      list.map((s) =>
-        s.id === storyId ? { ...s, likedByMe: !s.likedByMe, likes: s.likedByMe ? s.likes - 1 : s.likes + 1 } : s
-      )
-    if (userId === 'me') {
-      setMyStories(update)
-    } else {
-      setStoriesByUser((prev) => ({ ...prev, [userId]: update(prev[userId] || []) }))
+  const refreshStories = useCallback(async () => {
+    if (!userId) { setStoriesByUser({}); return }
+    const response = await fetch(`${API_URL}/stories`, { headers: headers() })
+    const data = await response.json().catch(() => ([]))
+    if (!response.ok) throw new Error(data.message || 'Unable to load stories.')
+    const grouped = {}
+    const nextAuthors = {}
+    for (const row of data) {
+      ;(grouped[row.author_id] ||= []).push(normalize(row, userId))
+      nextAuthors[row.author_id] = { id: row.author_id, name: row.author_name, username: row.username, avatar: row.author_avatar }
     }
-  }
+    setStoriesByUser(grouped); setAuthors(nextAuthors); setError('')
+  }, [userId])
 
-  const getStories = useCallback((userId) => (userId === 'me' ? myStories : storiesByUser[userId] || []), [myStories, storiesByUser])
+  useEffect(() => { refreshStories().catch((requestError) => setError(requestError.message)) }, [refreshStories])
 
-  const hasUnseen = useCallback((userId) => getStories(userId).some((s) => !viewed.has(s.id)), [getStories, viewed])
+  const addStory = useCallback(async ({ file, caption = '' }) => {
+    const body = new FormData(); body.append('media', file); body.append('caption', caption)
+    const response = await fetch(`${API_URL}/stories`, { method: 'POST', headers: headers(), body })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.reason || data.message || 'Unable to upload story.')
+    await refreshStories()
+    return data
+  }, [refreshStories])
 
-  const value = useMemo(
-    () => ({
-      storiesByUser,
-      myStories,
-      addStory,
-      markViewed,
-      toggleLikeStory,
-      getStories,
-      hasUnseen,
-      viewed,
-      activeEntryId,
-      setActiveEntryId,
-    }),
-    [storiesByUser, myStories, markViewed, getStories, hasUnseen, viewed, activeEntryId]
-  )
+  const markViewed = useCallback(async (storyId) => {
+    setStoriesByUser((previous) => Object.fromEntries(Object.entries(previous).map(([id, stories]) => [id, stories.map((story) => story.id === storyId ? { ...story, viewed: true } : story)])))
+    await fetch(`${API_URL}/stories/${storyId}/view`, { method: 'POST', headers: headers() }).catch(() => {})
+  }, [])
 
+  const toggleLikeStory = useCallback(async (_userId, storyId) => {
+    setStoriesByUser((previous) => Object.fromEntries(Object.entries(previous).map(([id, stories]) => [id, stories.map((story) => story.id === storyId ? { ...story, likedByMe: !story.likedByMe, likes: story.likes + (story.likedByMe ? -1 : 1) } : story)])))
+    await fetch(`${API_URL}/stories/${storyId}/like`, { method: 'POST', headers: headers() })
+  }, [])
+
+  const getStories = useCallback((id) => storiesByUser[id === 'me' ? userId : id] || [], [storiesByUser, userId])
+  const myStories = getStories('me')
+  const viewed = useMemo(() => new Set(Object.values(storiesByUser).flat().filter((story) => story.viewed).map((story) => story.id)), [storiesByUser])
+  const hasUnseen = useCallback((id) => getStories(id).some((story) => !story.viewed), [getStories])
+  const value = useMemo(() => ({ storiesByUser, authors, myStories, addStory, markViewed, toggleLikeStory, getStories, hasUnseen, viewed, activeEntryId, setActiveEntryId, refreshStories, error }), [storiesByUser, authors, myStories, addStory, markViewed, toggleLikeStory, getStories, hasUnseen, viewed, activeEntryId, refreshStories, error])
   return <StoriesContext.Provider value={value}>{children}</StoriesContext.Provider>
 }
 

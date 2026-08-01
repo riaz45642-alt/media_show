@@ -2,30 +2,24 @@ import { useRef } from 'react'
 import { Plus } from 'lucide-react'
 import Avatar from '../ui/Avatar'
 import StoryViewerModal from './StoryViewerModal'
-import { USERS } from '../../data/users'
 import { useAuth } from '../../context/AuthContext'
 import { useStories } from '../../context/StoriesContext'
 
-const STORY_USERS = USERS.filter((u) => u.hasStory)
-
 export default function StoriesBar() {
   const { user } = useAuth()
-  const { myStories, addStory, hasUnseen, activeEntryId, setActiveEntryId } = useStories()
+  const { storiesByUser, authors, myStories, addStory, hasUnseen, activeEntryId, setActiveEntryId, error } = useStories()
   const fileRef = useRef(null)
 
   const entries = [
     ...(myStories.length ? [{ id: 'me', name: user?.name || 'You', avatar: user?.avatar, color: '#4A90E2' }] : []),
-    ...STORY_USERS,
+    ...Object.keys(storiesByUser).filter((id) => id !== user?.id).map((id) => authors[id]),
   ]
 
-  const handleUpload = (e) => {
+  const handleUpload = async (e) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    const type = file.type.startsWith('video') ? 'video' : 'image'
-    const src = URL.createObjectURL(file)
-    addStory({ type, src })
-    setActiveEntryId('me')
+    try { await addStory({ file }); setActiveEntryId('me') } catch (uploadError) { window.alert(uploadError.message) }
   }
 
   return (
@@ -56,7 +50,7 @@ export default function StoriesBar() {
         </button>
         <input ref={fileRef} type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" />
 
-        {STORY_USERS.map((u) => {
+        {entries.filter((entry) => entry.id !== 'me').map((u) => {
           const unseen = hasUnseen(u.id)
           return (
             <button
@@ -80,6 +74,7 @@ export default function StoriesBar() {
           )
         })}
       </div>
+      {error && <p className="px-4 text-xs text-red-500">{error}</p>}
 
       <StoryViewerModal entries={entries} activeId={activeEntryId} onClose={() => setActiveEntryId(null)} />
     </>

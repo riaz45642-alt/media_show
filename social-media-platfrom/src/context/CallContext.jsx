@@ -57,14 +57,21 @@ export function CallProvider({ children }) {
   const getMedia = async (kind) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: kind === 'video' ? { facingMode: facingModeRef.current } : false,
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: kind === 'video' ? { facingMode: { ideal: facingModeRef.current }, width: { ideal: 1280 }, height: { ideal: 720 } } : false,
       })
       localStreamRef.current = stream
       setLocalStream(stream)
       return stream
     } catch (err) {
-      setError('Camera/microphone permission denied. Please allow access to make calls.')
+      const messages = {
+        NotAllowedError: 'Microphone/camera permission was denied. Allow access in your browser site settings and reload.',
+        NotFoundError: `No ${kind === 'video' ? 'camera or microphone' : 'microphone'} was found on this device.`,
+        NotReadableError: 'Your camera or microphone is already in use by another application.',
+        OverconstrainedError: 'This device cannot satisfy the requested camera settings.',
+        SecurityError: 'Calls require a secure HTTPS connection.',
+      }
+      setError(messages[err.name] || 'Unable to access your camera or microphone. Check device permissions and try again.')
       throw err
     }
   }

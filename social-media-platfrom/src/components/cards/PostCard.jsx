@@ -11,10 +11,14 @@ import { usePosts } from '../../context/PostsContext'
 import { useLanguage } from '../../context/LanguageContext'
 import { filterTextContent } from '../../utils/contentFilter'
 import { blockedTermAlertMessage } from '../../config/blockedTerms'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 
 export default function PostCard({ post }) {
   const { toggleLike, toggleSave, editPost, addComment } = usePosts()
   const { t } = useLanguage()
+  const { user } = useAuth()
+  const profilePath = post.authorId === user?.id ? '/profile' : `/users/${post.authorId}`
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [heartBurst, setHeartBurst] = useState(false)
@@ -63,11 +67,11 @@ export default function PostCard({ post }) {
     <article className="soft-card overflow-hidden animate-slideUp">
       <div className="flex items-center justify-between p-4 sm:p-5 pb-3">
         <div className="flex items-center gap-3">
-          <Avatar name={post.author} src={post.avatarSrc} color={post.avatarColor} size={42} />
+          <Link to={profilePath} aria-label={`Open ${post.author}'s profile`}><Avatar name={post.author} src={post.avatarSrc} color={post.avatarColor} size={42} /></Link>
           <div>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+            <Link to={profilePath} className="text-sm font-semibold text-gray-800 hover:text-primary dark:text-gray-100">
               {post.author}
-            </p>
+            </Link>
             <p className="text-xs text-gray-400">{post.time}{post.edited ? ' · Edited' : ''}</p>
           </div>
         </div>

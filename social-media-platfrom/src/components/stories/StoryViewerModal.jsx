@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Send, Heart, Volume2, VolumeX } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import Avatar from '../ui/Avatar'
 import Portal from '../ui/Portal'
 import ShareSheet from '../feed/ShareSheet'
@@ -187,10 +188,14 @@ export default function StoryViewerModal({ entries, activeId, onClose }) {
         </div>
 
         <div className="pointer-events-none absolute inset-x-4 top-7 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-white">
+          <Link
+            to={entry.id === 'me' ? '/profile' : `/users/${entry.id}`}
+            onClick={onClose}
+            className="pointer-events-auto flex items-center gap-2 text-white hover:underline"
+          >
             <Avatar name={entry.name} src={entry.avatar} color={entry.color} size={30} />
             <span className="text-sm font-semibold">{entry.id === 'me' ? 'Your story' : entry.name}</span>
-          </div>
+          </Link>
           <button onClick={onClose} aria-label="Close" className="tap-scale pointer-events-auto rounded-full p-1.5 text-white hover:bg-white/10">
             <X size={20} />
           </button>

@@ -6,6 +6,7 @@ import crypto from 'node:crypto'
 
 import authRoutes from './routes/authRoutes.js'
 import userRoutes from './routes/userRoutes.js'
+import storyRoutes from './routes/storyRoutes.js'
 import parentControlRoutes from './routes/parentControlRoutes.js'
 import postRoutes from './routes/postRoutes.js'
 import moderationRoutes from './routes/moderationRoutes.js'
@@ -82,6 +83,7 @@ app.get('/api/health', async (req, res) => {
 
 app.use('/api/auth', authRoutes)
 app.use('/api/users', userRoutes)
+app.use('/api/stories', storyRoutes)
 app.use('/api/parent-controls', parentControlRoutes)
 app.use('/api/posts', postRoutes)
 app.use('/api/posts/:postId/comments', commentRoutes)

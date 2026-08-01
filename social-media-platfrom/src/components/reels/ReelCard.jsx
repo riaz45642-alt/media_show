@@ -15,6 +15,8 @@ export default function ReelCard({ reel, active, muted, onToggleMute }) {
   const [shareOpen, setShareOpen] = useState(false)
   const [paused, setPaused] = useState(false)
   const [comments, setComments] = useState(reel.comments)
+  const ownerId = reel.author?.id || reel.authorId || reel.user_id
+  const profilePath = ownerId ? `/users/${ownerId}` : '/profile'
 
   useEffect(() => {
     const el = videoRef.current
@@ -85,10 +87,10 @@ export default function ReelCard({ reel, active, muted, onToggleMute }) {
       <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5 pb-6">
         <div className="min-w-0 flex-1 text-white">
           <div className="flex items-center gap-2.5">
-            <Link to="/profile">
+            <Link to={profilePath}>
               <Avatar name={reel.author.name} src={reel.author.avatar} color={reel.author.color} size={38} />
             </Link>
-            <Link to="/profile" className="text-sm font-semibold">
+            <Link to={profilePath} className="text-sm font-semibold">
               {reel.author.name}
             </Link>
             <button

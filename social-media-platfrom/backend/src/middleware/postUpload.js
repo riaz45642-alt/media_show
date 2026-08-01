@@ -65,3 +65,16 @@ export const uploadPostMedia = multer({
     callback(null, true)
   },
 }).array('media', 6)
+
+export const uploadStoryMedia = multer({
+  storage,
+  limits: { files: 1, fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => {
+    if (!ALLOWED_TYPES.has(file.mimetype)) {
+      const error = new Error('Only JPEG, PNG, WebP, GIF, MP4, and WebM files are supported')
+      error.status = 415
+      return callback(error)
+    }
+    callback(null, true)
+  },
+}).single('media')
