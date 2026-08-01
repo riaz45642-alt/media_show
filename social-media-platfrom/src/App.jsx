@@ -29,6 +29,7 @@ import Appeals from './pages/Appeals'
 import ModerationHistory from './pages/ModerationHistory'
 import Groups from './pages/Groups'
 import GroupDetail from './pages/GroupDetail'
+import CallHistory from './pages/CallHistory'
 
 export default function App() {
   return (
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/messages" element={<Messages />} />
         <Route path="/messages/:id" element={<Messages />} />
+        <Route path="/calls" element={<CallHistory />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile/edit" element={<EditProfile />} />
         <Route path="/settings" element={<Settings />} />

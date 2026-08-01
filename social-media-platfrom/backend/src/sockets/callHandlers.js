@@ -5,12 +5,46 @@ import { createNotification } from '../services/notificationService.js'
 
 const RING_TIMEOUT_MS = 30_000
 const ringingTimers = new Map() // callId -> Timeout
+let maintenanceTimer
+
+export function startCallMaintenance(io) {
+  const recover = async () => {
+    try {
+      const { rows } = await pool.query(
+        `UPDATE calls SET status = 'missed', ended_at = now(), duration_seconds = 0, end_reason = 'unanswered'
+         WHERE status = 'ringing' AND created_at < now() - interval '45 seconds'
+         RETURNING id, caller_id, callee_id, kind`
+      )
+      for (const call of rows) {
+        await pool.query(`UPDATE call_sessions SET closed_at = COALESCE(closed_at, now()) WHERE call_id = $1`, [call.id])
+        io.to(`user:${call.caller_id}`).emit('call:timeout', { callId: call.id })
+        io.to(`user:${call.callee_id}`).emit('call:timeout', { callId: call.id })
+        await createNotification({ userId: call.callee_id, actorId: call.caller_id, category: 'messages', type: 'missed_call', text: `Missed ${call.kind} call`, link: '/calls', entityType: 'call', entityId: call.id, data: { callId: call.id, kind: call.kind } })
+      }
+    } catch (error) { console.error('call maintenance failed:', { message: error.message, code: error.code, stack: error.stack }) }
+  }
+  recover()
+  clearInterval(maintenanceTimer)
+  maintenanceTimer = setInterval(recover, 15_000)
+  maintenanceTimer.unref?.()
+}
+
+export async function endCallsForOfflineUser(io, userId) {
+  const { rows } = await pool.query(
+    `UPDATE calls SET status = 'ended', ended_at = now(), end_reason = 'disconnected',
+       duration_seconds = CASE WHEN started_at IS NULL THEN 0 ELSE GREATEST(0, EXTRACT(EPOCH FROM (now() - started_at))::int) END
+     WHERE status = 'accepted' AND (caller_id = $1 OR callee_id = $1)
+     RETURNING id, caller_id, callee_id, duration_seconds`, [userId]
+  )
+  for (const call of rows) {
+    await pool.query(`UPDATE call_sessions SET closed_at = COALESCE(closed_at, now()) WHERE call_id = $1`, [call.id])
+    await pool.query(`UPDATE call_participants SET status = 'left', left_at = COALESCE(left_at, now()) WHERE call_id = $1 AND status = 'joined'`, [call.id])
+    const otherId = call.caller_id === userId ? call.callee_id : call.caller_id
+    io.to(`user:${otherId}`).emit('call:ended', { callId: call.id, reason: 'disconnected', durationSeconds: call.duration_seconds })
+  }
+}
 
 async function hasActiveCall(userId) {
-  await pool.query(
-    `UPDATE calls SET status = 'missed', ended_at = now(), end_reason = 'stale_timeout'
-     WHERE status = 'ringing' AND created_at < now() - interval '45 seconds'`
-  )
   const { rows } = await pool.query(
     `SELECT 1 FROM calls WHERE (caller_id = $1 OR callee_id = $1) AND status IN ('ringing','accepted') LIMIT 1`,
     [userId]
@@ -79,13 +113,14 @@ export function registerCallHandlers(io, socket) {
       const timer = setTimeout(async () => {
         const { rows } = await pool.query(`SELECT status FROM calls WHERE id = $1`, [callId])
         if (rows[0]?.status === 'ringing') {
-          await pool.query(`UPDATE calls SET status = 'missed', ended_at = now() WHERE id = $1`, [callId])
+          await pool.query(`UPDATE calls SET status = 'missed', ended_at = now(), duration_seconds = 0, end_reason = 'unanswered' WHERE id = $1`, [callId])
+          await pool.query(`UPDATE call_sessions SET closed_at = now() WHERE call_id = $1`, [callId])
           await logEvent(callId, null, 'timeout')
           io.to(`user:${userId}`).emit('call:timeout', { callId })
           io.to(`user:${calleeId}`).emit('call:timeout', { callId })
           await createNotification({
             userId: calleeId, actorId: userId, category: 'messages', type: 'missed_call',
-            text: `Missed ${kind} call`, link: '/messages', entityType: 'call', entityId: callId,
+            text: `Missed ${kind} call`, link: '/calls', entityType: 'call', entityId: callId,
             data: { callId, kind },
           })
         }
@@ -136,8 +171,11 @@ export function registerCallHandlers(io, socket) {
     )
     if (!rows.length) return
     await logEvent(callId, userId, 'decline')
+    await pool.query(`UPDATE call_participants SET status = 'declined', left_at = now() WHERE call_id = $1 AND user_id = $2`, [callId, userId])
+    await pool.query(`UPDATE call_sessions SET closed_at = now() WHERE call_id = $1`, [callId])
     io.to(`user:${rows[0].caller_id}`).emit('call:declined', { callId })
     io.to(`user:${rows[0].caller_id}`).emit('call:rejected', { callId })
+    await createNotification({ userId: rows[0].caller_id, actorId: userId, category: 'messages', type: 'call_declined', text: 'Your call was declined', link: '/calls', entityType: 'call', entityId: callId })
   })
 
   socket.on('call:end', async ({ callId, reason = 'ended' }) => {
@@ -158,6 +196,7 @@ export function registerCallHandlers(io, socket) {
         `UPDATE call_participants SET status = 'left', left_at = now() WHERE call_id = $1 AND status = 'joined'`,
         [callId]
       )
+      await pool.query(`UPDATE call_sessions SET closed_at = now() WHERE call_id = $1`, [callId])
       await logEvent(callId, userId, 'end', { reason })
       const otherId = userId === caller_id ? callee_id : caller_id
       io.to(`user:${otherId}`).emit('call:ended', { callId, reason, durationSeconds: duration_seconds })

@@ -1,7 +1,7 @@
 import { Server } from 'socket.io'
 import jwt from 'jsonwebtoken'
 import { markOnline, markOffline } from '../services/presenceService.js'
-import { registerCallHandlers } from './callHandlers.js'
+import { endCallsForOfflineUser, registerCallHandlers, startCallMaintenance } from './callHandlers.js'
 import { registerGroupHandlers } from './groupHandlers.js'
 import { registerDirectChatHandlers } from './directChatHandlers.js'
 import { corsOriginCallback } from '../config/cors.js'
@@ -13,6 +13,7 @@ export function initSocket(httpServer) {
     cors: { origin: corsOriginCallback },
     maxHttpBufferSize: 1e6,
   })
+  startCallMaintenance(io)
 
   io.use((socket, next) => {
     try {
@@ -51,6 +52,7 @@ export function initSocket(httpServer) {
     socket.on('disconnect', async () => {
       const fullyOffline = await markOffline(userId, socket.id)
       if (fullyOffline) {
+        await endCallsForOfflineUser(io, userId).catch((error) => console.error('call disconnect cleanup failed:', error))
         const payload = { userId, status: 'offline', lastSeen: new Date().toISOString() }
         io.emit('presence:update', payload)
         io.emit('user:offline', payload)

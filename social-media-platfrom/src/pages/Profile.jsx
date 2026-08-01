@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Settings as SettingsIcon, Edit3, Award, Gauge, LogOut, Grid3x3, Bookmark, Plus, Lock } from 'lucide-react'
+import { Settings as SettingsIcon, Edit3, Award, Gauge, LogOut, Grid3x3, Bookmark, Plus, Lock, Phone } from 'lucide-react'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import ProfileGrid from '../components/profile/ProfileGrid'
@@ -161,6 +161,9 @@ export default function Profile() {
       </div>
 
       <div className="mt-6 space-y-2">
+        <Link to="/calls" className="soft-card flex items-center justify-between p-4 text-sm font-medium text-gray-700 dark:text-gray-200 hover-lift">
+          <span className="flex items-center gap-2"><Phone size={16} /> Call history</span>
+        </Link>
         <Link to="/moderation-history" className="soft-card flex items-center justify-between p-4 text-sm font-medium text-gray-700 dark:text-gray-200 hover-lift">
           Moderation History
         </Link>
