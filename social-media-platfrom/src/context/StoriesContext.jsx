@@ -49,11 +49,26 @@ export function StoriesProvider({ children }) {
     await fetch(`${API_URL}/stories/${storyId}/like`, { method: 'POST', headers: headers() })
   }, [])
 
+  const deleteStory = useCallback(async (storyId) => {
+    const response = await fetch(`${API_URL}/stories/${storyId}`, { method: 'DELETE', headers: headers() })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.message || 'Unable to delete story.')
+    setStoriesByUser((previous) => {
+      const next = {}
+      for (const [authorId, stories] of Object.entries(previous)) {
+        const remaining = stories.filter((story) => story.id !== storyId)
+        if (remaining.length) next[authorId] = remaining
+      }
+      return next
+    })
+    return data
+  }, [])
+
   const getStories = useCallback((id) => storiesByUser[id === 'me' ? userId : id] || [], [storiesByUser, userId])
   const myStories = getStories('me')
   const viewed = useMemo(() => new Set(Object.values(storiesByUser).flat().filter((story) => story.viewed).map((story) => story.id)), [storiesByUser])
   const hasUnseen = useCallback((id) => getStories(id).some((story) => !story.viewed), [getStories])
-  const value = useMemo(() => ({ storiesByUser, authors, myStories, addStory, markViewed, toggleLikeStory, getStories, hasUnseen, viewed, activeEntryId, setActiveEntryId, refreshStories, error }), [storiesByUser, authors, myStories, addStory, markViewed, toggleLikeStory, getStories, hasUnseen, viewed, activeEntryId, refreshStories, error])
+  const value = useMemo(() => ({ storiesByUser, authors, myStories, addStory, deleteStory, markViewed, toggleLikeStory, getStories, hasUnseen, viewed, activeEntryId, setActiveEntryId, refreshStories, error }), [storiesByUser, authors, myStories, addStory, deleteStory, markViewed, toggleLikeStory, getStories, hasUnseen, viewed, activeEntryId, refreshStories, error])
   return <StoriesContext.Provider value={value}>{children}</StoriesContext.Provider>
 }
 

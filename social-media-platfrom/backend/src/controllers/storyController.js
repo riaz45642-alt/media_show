@@ -3,6 +3,7 @@ import { pool } from '../config/db.js'
 import { moderateUploadedMedia } from '../services/mediaModerationService.js'
 import { moderate } from '../services/moderationService.js'
 import { deletePublicMedia, uploadPublicMedia } from '../services/objectStorageService.js'
+import { deleteStoryAndMedia } from '../services/storyCleanupService.js'
 
 const kindFor = (mime = '') => mime.startsWith('video/') ? 'video' : 'image'
 const logStage = (req, event, extra = {}) => console.info(JSON.stringify({
@@ -169,4 +170,16 @@ export async function toggleStoryLike(req, res, next) {
     if (!removed.rowCount) await pool.query(`INSERT INTO story_reactions (story_id, user_id) VALUES ($1::uuid,$2::uuid) ON CONFLICT DO NOTHING`, [req.params.storyId, req.user.id])
     res.json({ liked: !removed.rowCount })
   } catch (error) { next(error) }
+}
+
+export async function deleteStory(req, res, next) {
+  try {
+    const result = await deleteStoryAndMedia(req.params.storyId, req.user.id)
+    if (!result.found) return res.status(404).json({ message: 'Story not found or you do not own it.' })
+    logStage(req, 'story_deleted', { storyId: req.params.storyId, storageCleanupPending: result.storageCleanupPending })
+    res.json({ message: 'Story deleted.', storyId: req.params.storyId, storageCleanupPending: result.storageCleanupPending })
+  } catch (error) {
+    logFailure(req, 'story_delete_failed', error, { storyId: req.params.storyId })
+    next(error)
+  }
 }

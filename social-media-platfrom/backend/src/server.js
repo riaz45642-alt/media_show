@@ -26,6 +26,7 @@ import { initSocket } from './sockets/index.js'
 import { checkDatabase } from './config/db.js'
 import { corsOriginCallback } from './config/cors.js'
 import { uploadDirectory } from './middleware/postUpload.js'
+import { startStoryCleanupJob } from './services/storyCleanupService.js'
 
 dotenv.config()
 
@@ -173,6 +174,7 @@ function serializeError(error) {
 
 const httpServer = createServer(app)
 initSocket(httpServer)
+startStoryCleanupJob()
 
 const PORT = process.env.PORT || 5000
 httpServer.listen(PORT, () => console.log(`Media Show API (with realtime) running on port ${PORT}`))

@@ -52,7 +52,19 @@ export async function deletePublicMedia({ bucket, objectPath }) {
   const baseUrl = cleanBase(process.env.SUPABASE_URL)
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
   if (!baseUrl || !serviceKey || !bucket || !objectPath) return
-  await fetch(`${baseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath.split('/').map(encodeURIComponent).join('/')}`, {
+  const response = await fetch(`${baseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath.split('/').map(encodeURIComponent).join('/')}`, {
     method: 'DELETE', headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
-  }).catch(() => {})
+  })
+  if (!response.ok && response.status !== 404) {
+    const error = new Error(`Supabase Storage delete failed (${response.status})`)
+    error.code = 'OBJECT_STORAGE_DELETE_FAILED'
+    throw error
+  }
+}
+
+export function objectPathFromPublicUrl(publicUrl, bucket) {
+  const marker = `/storage/v1/object/public/${encodeURIComponent(bucket)}/`
+  const index = String(publicUrl || '').indexOf(marker)
+  if (index < 0) return null
+  return String(publicUrl).slice(index + marker.length).split('/').map(decodeURIComponent).join('/')
 }

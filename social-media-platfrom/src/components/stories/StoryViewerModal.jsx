@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Send, Heart, Volume2, VolumeX } from 'lucide-react'
+import { X, Send, Heart, Volume2, VolumeX, MoreVertical, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import Avatar from '../ui/Avatar'
 import Portal from '../ui/Portal'
+import Modal from '../ui/Modal'
 import ShareSheet from '../feed/ShareSheet'
 import { useStories } from '../../context/StoriesContext'
 import { useChat } from '../../context/ChatContext'
@@ -11,7 +12,7 @@ import { FOLLOWING } from '../../data/users'
 const IMAGE_DURATION = 5000
 
 export default function StoryViewerModal({ entries, activeId, onClose }) {
-  const { getStories, markViewed, toggleLikeStory, setActiveEntryId } = useStories()
+  const { getStories, markViewed, toggleLikeStory, deleteStory, setActiveEntryId } = useStories()
   const { findOrCreateConversation, sendMessage } = useChat()
   const [storyIndex, setStoryIndex] = useState(0)
   const [progress, setProgress] = useState(0)
@@ -20,6 +21,9 @@ export default function StoryViewerModal({ entries, activeId, onClose }) {
   const [sent, setSent] = useState(false)
   const [paused, setPaused] = useState(false)
   const [muted, setMuted] = useState(true)
+  const [ownerMenuOpen, setOwnerMenuOpen] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const videoRef = useRef(null)
 
   const entryIndex = entries.findIndex((en) => en.id === activeId)
@@ -130,6 +134,17 @@ export default function StoryViewerModal({ entries, activeId, onClose }) {
     } catch { /* privacy or network errors leave the reply intact */ }
   }
 
+  const handleDelete = async () => {
+    try {
+      await deleteStory(story.id)
+      setDeleteConfirmOpen(false)
+      setOwnerMenuOpen(false)
+      setDeleteError('')
+      if (stories.length <= 1) onClose()
+      else setStoryIndex((index) => Math.max(0, Math.min(index, stories.length - 2)))
+    } catch (requestError) { setDeleteError(requestError.message) }
+  }
+
   return (
     <Portal>
       <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-0 sm:p-6">
@@ -196,9 +211,19 @@ export default function StoryViewerModal({ entries, activeId, onClose }) {
             <Avatar name={entry.name} src={entry.avatar} color={entry.color} size={30} />
             <span className="text-sm font-semibold">{entry.id === 'me' ? 'Your story' : entry.name}</span>
           </Link>
-          <button onClick={onClose} aria-label="Close" className="tap-scale pointer-events-auto rounded-full p-1.5 text-white hover:bg-white/10">
-            <X size={20} />
-          </button>
+          <div className="pointer-events-auto flex items-center gap-1">
+            {entry.id === 'me' && (
+              <div className="relative">
+                <button onClick={() => setOwnerMenuOpen((open) => !open)} aria-label="Story options" className="tap-scale rounded-full p-1.5 text-white hover:bg-white/10"><MoreVertical size={20} /></button>
+                {ownerMenuOpen && (
+                  <div className="absolute right-0 top-9 z-30 w-40 rounded-xl bg-white p-1 text-gray-800 shadow-xl">
+                    <button onClick={() => { setOwnerMenuOpen(false); setDeleteConfirmOpen(true) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><Trash2 size={15} /> Delete Story</button>
+                  </div>
+                )}
+              </div>
+            )}
+            <button onClick={onClose} aria-label="Close" className="tap-scale rounded-full p-1.5 text-white hover:bg-white/10"><X size={20} /></button>
+          </div>
         </div>
 
         {/* Like + reply bar */}
@@ -258,6 +283,14 @@ export default function StoryViewerModal({ entries, activeId, onClose }) {
         open={shareOpen}
         onClose={() => setShareOpen(false)}
       />
+      <Modal open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} title="Delete Story?">
+        <p className="text-sm text-gray-600 dark:text-gray-300">Are you sure you want to delete this story? This action cannot be undone.</p>
+        {deleteError && <p role="alert" className="mt-3 text-sm text-red-500">{deleteError}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={() => setDeleteConfirmOpen(false)} className="rounded-full px-4 py-2 text-sm font-semibold text-gray-500">Cancel</button>
+          <button onClick={handleDelete} className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white">Delete Story</button>
+        </div>
+      </Modal>
     </div>
     </Portal>
   )
