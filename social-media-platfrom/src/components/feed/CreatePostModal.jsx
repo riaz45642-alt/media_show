@@ -7,12 +7,14 @@ import { useLanguage } from '../../context/LanguageContext'
 import useModeration from '../../hooks/useModeration'
 import ContentFilterWarning from '../common/ContentFilterWarning'
 import { filterTextContent } from '../../utils/contentFilter'
+import { blockedTermAlertMessage } from '../../config/blockedTerms'
 
 export default function CreatePostModal({ open, onClose }) {
   const { t } = useLanguage()
   const { addPost } = usePosts()
   const { checking, check } = useModeration()
   const fileRef = useRef(null)
+  const textRef = useRef(null)
 
   const [text, setText] = useState('')
   const [media, setMedia] = useState([]) // [{ type, src, file }]
@@ -69,7 +71,14 @@ export default function CreatePostModal({ open, onClose }) {
     setError('')
     const filtered = filterTextContent(text)
     setBlockedTerms(filtered.matches)
-    if (!filtered.allowed) return
+    if (!filtered.allowed) {
+      const firstMatch = filtered.matches[0]
+      const start = text.toLowerCase().indexOf(firstMatch.toLowerCase())
+      textRef.current?.focus()
+      if (start >= 0) textRef.current?.setSelectionRange(start, start + firstMatch.length)
+      window.alert(blockedTermAlertMessage(filtered.matches))
+      return
+    }
     const result = await check({ text, image: media[0]?.file })
     if (result.serviceUnavailable) {
       setError('Content review is temporarily unavailable. Please try again shortly.')
@@ -93,6 +102,7 @@ export default function CreatePostModal({ open, onClose }) {
   return (
     <Modal open={open} onClose={handleClose} title={t('create_post')}>
       <textarea
+        ref={textRef}
         value={text}
         onChange={(e) => { setText(e.target.value); setBlockedTerms([]) }}
         placeholder={t('write_caption')}

@@ -10,6 +10,7 @@ import ShareSheet from '../feed/ShareSheet'
 import { usePosts } from '../../context/PostsContext'
 import { useLanguage } from '../../context/LanguageContext'
 import { filterTextContent } from '../../utils/contentFilter'
+import { blockedTermAlertMessage } from '../../config/blockedTerms'
 
 export default function PostCard({ post }) {
   const { toggleLike, toggleSave, editPost, addComment } = usePosts()
@@ -32,7 +33,10 @@ export default function PostCard({ post }) {
   const saveEdit = async () => {
     const filtered = filterTextContent(draft)
     setBlockedTerms(filtered.matches)
-    if (!filtered.allowed) return
+    if (!filtered.allowed) {
+      window.alert(blockedTermAlertMessage(filtered.matches))
+      return
+    }
     await editPost(post.id, draft.trim())
     setEditing(false)
   }
