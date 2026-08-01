@@ -275,9 +275,23 @@ export async function getMe(req, res, next) {
 
 export async function updateMe(req, res, next) {
   try {
-    const { name, username, bio, isPrivate } = req.body
+    const { isPrivate } = req.body
+    const currentResult = await pool.query(
+      `SELECT user_id AS id, display_name AS name, username, date_of_birth, age_group, bio
+       FROM user_profiles WHERE user_id = $1::uuid`, [req.user.id]
+    )
+    const current = currentResult.rows[0]
+    if (!current) return res.status(404).json({ message: 'Profile not found.' })
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : null
+    const bio = typeof req.body.bio === 'string' ? req.body.bio.trim() : null
+    const normalizedUsername = typeof req.body.username === 'string' && req.body.username.trim()
+      ? req.body.username.trim().toLowerCase()
+      : null
+    const nameChanged = name !== null && name !== current.name
+    const usernameChanged = normalizedUsername !== null && normalizedUsername.toLowerCase() !== String(current.username).toLowerCase()
+    const bioChanged = bio !== null && bio !== (current.bio || '')
 
-    if (name) {
+    if (nameChanged) {
       const check = validateDisplayName(name)
       if (!check.valid) {
         return res.status(422).json({ message: 'Display name not allowed', flags: check.flags, suggestions: check.suggestions })
@@ -285,21 +299,27 @@ export async function updateMe(req, res, next) {
     }
 
     let moderation = null
-    if (bio) {
+    if (bioChanged && bio) {
       moderation = await moderate({ text: bio, userId: req.user.id, contentType: 'bio' })
       if (moderation.status === 'rejected') {
         return res.status(422).json({ message: 'Bio rejected by moderation', reason: moderation.reason })
       }
     }
 
-    const normalizedUsername = username?.trim().toLowerCase()
     if (normalizedUsername && !/^[a-z0-9_]{3,30}$/.test(normalizedUsername)) return res.status(400).json({ message: 'Username must be 3–30 letters, numbers, or underscores.' })
+    if (usernameChanged) {
+      const duplicate = await pool.query(
+        `SELECT user_id FROM user_profiles WHERE username = $1::citext AND user_id <> $2::uuid LIMIT 1`,
+        [normalizedUsername, req.user.id]
+      )
+      if (duplicate.rowCount) return res.status(409).json({ message: 'That username is already taken.', code: 'USERNAME_TAKEN' })
+    }
     const { rows } = await pool.query(
       `UPDATE user_profiles SET display_name = COALESCE($1, display_name),
          username = COALESCE($2, username), bio = COALESCE($3, bio), updated_at = now()
        WHERE user_id = $4
        RETURNING user_id AS id, display_name AS name, username, date_of_birth, age_group, bio`,
-      [name, normalizedUsername, bio, req.user.id]
+      [nameChanged ? name : null, usernameChanged ? normalizedUsername : null, bioChanged ? bio : null, req.user.id]
     )
     if (typeof isPrivate === 'boolean') {
       await pool.query(
@@ -310,7 +330,10 @@ export async function updateMe(req, res, next) {
     if (rows[0]) rows[0].is_private = typeof isPrivate === 'boolean' ? isPrivate : undefined
     res.json({ user: rows[0], moderation })
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ message: 'That username is already taken.' })
+    if (err.code === '23505' && err.constraint === 'user_profiles_username_key') {
+      return res.status(409).json({ message: 'That username is already taken.', code: 'USERNAME_TAKEN' })
+    }
+    console.error('updateMe failed:', { userId: req.user?.id, code: err.code, constraint: err.constraint, detail: err.detail, stack: err.stack })
     next(err)
   }
 }

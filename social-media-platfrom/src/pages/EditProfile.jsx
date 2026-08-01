@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Camera, User, AtSign, FileText } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
@@ -20,6 +20,21 @@ export default function EditProfile() {
   const [avatarPreview, setAvatarPreview] = useState(user?.avatar || '')
   const [saved, setSaved] = useState(false)
   const [blockedTerms, setBlockedTerms] = useState([])
+  const initialProfile = useRef({ name: user?.name || '', username: user?.username || '', bio: user?.bio || '' })
+
+  useEffect(() => {
+    const token = localStorage.getItem('mediashow_token')
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/users/me`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async (response) => {
+      if (!response.ok) return
+      const profile = await response.json()
+      const hydrated = { name: profile.name || '', username: profile.username || '', bio: profile.bio || '' }
+      initialProfile.current = hydrated
+      setForm(hydrated)
+      setAvatarPreview(profile.avatar_url || user?.avatar || '')
+    }).catch(() => {})
+  }, [user?.avatar])
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
   const handleAvatar = (e) => {
@@ -43,12 +58,17 @@ export default function EditProfile() {
     if (blocked.length) return
     setError('')
     const token = localStorage.getItem('mediashow_token')
+    const normalized = { name: form.name.trim(), username: form.username.trim().toLowerCase(), bio: form.bio.trim() }
+    const patch = Object.fromEntries(Object.entries(normalized).filter(([key, value]) => value !== initialProfile.current[key]))
     const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/users/me`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify(form),
+      body: JSON.stringify(patch),
     })
     const data = await response.json().catch(() => ({}))
-    if (!response.ok) { setError(data.message || 'Unable to save profile.'); return }
+    if (!response.ok) {
+      setError(data.code === 'USERNAME_TAKEN' ? 'That username is already taken.' : (data.message || 'Unable to save profile.'))
+      return
+    }
     updateUser({ ...data.user, avatar: avatarPreview })
     setSaved(true)
     setTimeout(() => navigate('/profile'), 700)
