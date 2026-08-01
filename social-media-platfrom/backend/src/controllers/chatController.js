@@ -5,17 +5,24 @@ import { getIO } from '../sockets/index.js'
 
 async function canMessage(requesterId, targetId, client = pool) {
   const { rows } = await client.query(
-    `SELECT s.profile_visibility,
+    `SELECT s.profile_visibility, s.messaging_enabled AS target_messaging_enabled,
+            requester_settings.messaging_enabled AS requester_messaging_enabled,
             EXISTS (SELECT 1 FROM follows WHERE follower_id = $1 AND followed_id = $2) AS approved,
             EXISTS (SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1)) AS blocked
      FROM users u
      JOIN user_settings s ON s.user_id = u.id
+     JOIN user_settings requester_settings ON requester_settings.user_id = $1
      WHERE u.id = $2 AND u.status = 'active' AND u.deleted_at IS NULL`,
     [requesterId, targetId]
   )
   const target = rows[0]
-  if (!target || target.blocked) return false
+  if (!target || target.blocked || !target.target_messaging_enabled || !target.requester_messaging_enabled) return false
   return target.profile_visibility === 'public' || target.approved
+}
+
+async function messagingEnabled(userId) {
+  const { rows } = await pool.query(`SELECT messaging_enabled FROM user_settings WHERE user_id = $1`, [userId])
+  return rows[0]?.messaging_enabled !== false
 }
 
 export async function searchChatUsers(req, res, next) {
@@ -25,12 +32,14 @@ export async function searchChatUsers(req, res, next) {
     const { rows } = await pool.query(
       `SELECT u.id, p.username, p.display_name AS name, avatar.storage_path AS avatar_url,
               EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = $1 AND f.followed_id = u.id) AS is_following,
-              CASE WHEN s.profile_visibility = 'public' THEN true
+              CASE WHEN own_settings.messaging_enabled = false OR s.messaging_enabled = false THEN false
+                   WHEN s.profile_visibility = 'public' THEN true
                    ELSE EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = $1 AND f.followed_id = u.id)
               END AS can_message
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
        JOIN user_settings s ON s.user_id = u.id
+       JOIN user_settings own_settings ON own_settings.user_id = $1
        LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
        WHERE u.id <> $1 AND u.status = 'active' AND u.deleted_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = u.id) OR (b.blocker_id = u.id AND b.blocked_id = $1))
@@ -96,6 +105,7 @@ export async function createConversation(req, res, next) {
 
 export async function listConversations(req, res, next) {
   try {
+    if (!await messagingEnabled(req.user.id)) return res.status(403).json({ message: 'Messaging has been disabled by your parent.' })
     const { rows } = await pool.query(
       `SELECT c.id, c.created_at, c.last_message_at, me.pinned_at, me.archived_at,
               other.user_id AS participant_id, p.display_name AS participant_name, p.username,
@@ -128,6 +138,7 @@ export async function listConversations(req, res, next) {
 
 export async function listDirectMessages(req, res, next) {
   try {
+    if (!await messagingEnabled(req.user.id)) return res.status(403).json({ message: 'Messaging has been disabled by your parent.' })
     const before = req.query.before || null
     const access = await pool.query(
       `SELECT 1 FROM conversation_members cm JOIN conversations c ON c.id = cm.conversation_id AND c.kind = 'direct'

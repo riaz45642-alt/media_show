@@ -45,10 +45,12 @@ export function ChatProvider({ children }) {
   const [conversations, setConversations] = useState([])
   const [typing, setTyping] = useState({})
   const [loading, setLoading] = useState(false)
+  const [chatError, setChatError] = useState('')
 
   const refreshConversations = useCallback(async () => {
     if (!user?.id) return []
     setLoading(true)
+    setChatError('')
     try {
       const rows = await chatService.listConversations()
       const normalized = rows.map((row) => normalizeConversation(row, user.id))
@@ -57,6 +59,9 @@ export function ChatProvider({ children }) {
         return existing?.messagesLoaded ? { ...conversation, messages: existing.messages, messagesLoaded: true } : conversation
       }))
       return normalized
+    } catch (error) {
+      setChatError(error.message)
+      throw error
     } finally { setLoading(false) }
   }, [user?.id])
 
@@ -167,7 +172,7 @@ export function ChatProvider({ children }) {
   const unreadCount = useMemo(() => conversations.filter((item) => !item.archived).reduce((sum, item) => sum + item.unread, 0), [conversations])
 
   return <ChatContext.Provider value={{
-    conversations, typing, loading, unreadCount, getConversation, findUser,
+    conversations, typing, loading, chatError, unreadCount, getConversation, findUser,
     findOrCreateConversation, loadConversationMessages, refreshConversations,
     sendMessage, deleteMessage, deleteConversation, togglePin, toggleArchive,
     markAsRead, shareContent, forwardMessage, setTypingStatus,

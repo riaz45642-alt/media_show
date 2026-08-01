@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Camera, User, Cake, FileText } from 'lucide-react'
+import { Camera, User, AtSign, FileText } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
@@ -14,7 +14,7 @@ export default function EditProfile() {
   const navigate = useNavigate()
   const [form, setForm] = useState({
     name: user?.name || '',
-    age: user?.age || '',
+    username: user?.username || '',
     bio: user?.bio || '',
   })
   const [avatarPreview, setAvatarPreview] = useState(user?.avatar || '')
@@ -33,14 +33,23 @@ export default function EditProfile() {
     reader.readAsDataURL(file)
   }
 
-  const handleSubmit = (e) => {
+  const [error, setError] = useState('')
+  const handleSubmit = async (e) => {
     e.preventDefault()
     const nameResult = filterTextContent(form.name, { context: 'identifier' })
     const bioResult = filterTextContent(form.bio)
     const blocked = [...new Set([...nameResult.blockedTerms, ...bioResult.blockedTerms])]
     setBlockedTerms(blocked)
     if (blocked.length) return
-    updateUser({ ...form, avatar: avatarPreview })
+    setError('')
+    const token = localStorage.getItem('mediashow_token')
+    const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/users/me`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(form),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) { setError(data.message || 'Unable to save profile.'); return }
+    updateUser({ ...data.user, avatar: avatarPreview })
     setSaved(true)
     setTimeout(() => navigate('/profile'), 700)
   }
@@ -61,7 +70,7 @@ export default function EditProfile() {
         </div>
 
         <Input label="Full name" icon={User} name="name" value={form.name} onChange={handleChange} />
-        <Input label="Age" icon={Cake} type="number" name="age" value={form.age} onChange={handleChange} />
+        <Input label="Username" icon={AtSign} name="username" value={form.username} onChange={handleChange} />
 
         <Input
           label="Bio"
@@ -71,8 +80,11 @@ export default function EditProfile() {
           placeholder="Tell others a little about you..."
           value={form.bio}
           onChange={(e) => { handleChange(e); setBlockedTerms([]) }}
+          maxLength={200}
         />
+        <p className="text-right text-xs text-gray-400">{form.bio.length}/200</p>
         <ContentFilterWarning matches={blockedTerms} />
+        {error && <p className="text-sm text-red-500">{error}</p>}
 
         <Button type="submit" fullWidth size="lg">
           {saved ? 'Saved ✓' : 'Save Changes'}

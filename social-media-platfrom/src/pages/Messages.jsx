@@ -11,7 +11,7 @@ import * as chatService from '../services/chatService'
 import Avatar from '../components/ui/Avatar'
 
 export default function Messages() {
-  const { conversations, togglePin, toggleArchive, deleteConversation, findOrCreateConversation } = useChat()
+  const { conversations, togglePin, toggleArchive, deleteConversation, findOrCreateConversation, chatError } = useChat()
   const navigate = useNavigate()
   const { id: activeId } = useParams()
   const [query, setQuery] = useState('')
@@ -91,6 +91,7 @@ export default function Messages() {
   return (
     <div>
       <PageHeader title="Chat" subtitle="All chats are monitored by Smart Ethical Shield." />
+      {chatError && <div className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-600">{chatError}</div>}
 
       <div className="mb-5 flex items-center gap-2 rounded-2xl bg-secondary/10 p-3.5 text-xs text-secondary-dark dark:text-secondary">
         <ShieldCheck size={16} className="shrink-0" />

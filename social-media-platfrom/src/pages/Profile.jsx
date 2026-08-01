@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Settings as SettingsIcon, Edit3, Award, Gauge, LogOut, Grid3x3, Bookmark, Plus, Lock } from 'lucide-react'
 import Avatar from '../components/ui/Avatar'
@@ -11,7 +11,8 @@ import { useAuth } from '../context/AuthContext'
 import { usePosts } from '../context/PostsContext'
 import { useLanguage } from '../context/LanguageContext'
 import { getAgeGroup, AGE_GROUP_LABEL } from '../utils/ageGroup'
-import { FOLLOWERS, FOLLOWING } from '../data/users'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 export default function Profile() {
   const { user, logout } = useAuth()
@@ -21,6 +22,14 @@ export default function Profile() {
   const score = user?.safeZoneScore ?? user?.safe_zone_score ?? 0
   const [tab, setTab] = useState('posts')
   const [createOpen, setCreateOpen] = useState(false)
+  const [profile, setProfile] = useState(user)
+
+  useEffect(() => {
+    const token = localStorage.getItem('mediashow_token')
+    fetch(`${API_URL}/users/me`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then(setProfile).catch(() => {})
+  }, [user])
 
   const activePosts = tab === 'posts' ? myPosts : savedPosts
 
@@ -40,7 +49,8 @@ export default function Profile() {
         <h2 className="mt-3 font-display text-lg font-bold text-gray-800 dark:text-gray-100">
           {user?.name || 'Explorer'}
         </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">{user?.email}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">@{profile?.username}</p>
+        {profile?.bio && <p className="mx-auto mt-3 max-w-md whitespace-pre-line text-sm text-gray-600 dark:text-gray-300">{profile.bio}</p>}
         {ageGroup && (
           <span className="mt-2 inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
             {AGE_GROUP_LABEL[ageGroup]}
@@ -57,15 +67,15 @@ export default function Profile() {
 
         <div className="mt-4 flex items-center justify-center gap-6">
           <div>
-            <p className="font-display text-lg font-bold text-gray-800 dark:text-gray-100">{myPosts.length}</p>
+            <p className="font-display text-lg font-bold text-gray-800 dark:text-gray-100">{profile?.post_count ?? myPosts.length}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">{t('profile_posts')}</p>
           </div>
           <Link to="/profile/followers" className="hover-lift">
-            <p className="font-display text-lg font-bold text-gray-800 dark:text-gray-100">{FOLLOWERS.length}</p>
+            <p className="font-display text-lg font-bold text-gray-800 dark:text-gray-100">{profile?.follower_count ?? 0}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">{t('followers')}</p>
           </Link>
           <Link to="/profile/following" className="hover-lift">
-            <p className="font-display text-lg font-bold text-gray-800 dark:text-gray-100">{FOLLOWING.length}</p>
+            <p className="font-display text-lg font-bold text-gray-800 dark:text-gray-100">{profile?.following_count ?? 0}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">{t('following')}</p>
           </Link>
         </div>

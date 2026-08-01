@@ -37,12 +37,13 @@ export async function getUserProfile(req, res, next) {
       `SELECT u.id, p.display_name AS name, p.username, p.bio, p.age_group,
               avatar.storage_path AS avatar_url,
               (s.profile_visibility <> 'public') AS is_private,
+              s.messaging_enabled,
               EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = $2 AND f.followed_id = u.id) AS is_following,
               EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = u.id AND f.followed_id = $2) AS follows_viewer,
               EXISTS (SELECT 1 FROM friend_requests fr WHERE fr.sender_id = $2 AND fr.recipient_id = u.id AND fr.status = 'pending') AS follow_pending,
               ($2 = u.id OR s.profile_visibility = 'public' OR EXISTS
                 (SELECT 1 FROM follows f WHERE f.follower_id = $2 AND f.followed_id = u.id)) AS can_view_posts,
-              ($2 <> u.id AND (s.profile_visibility = 'public' OR EXISTS
+              ($2 <> u.id AND s.messaging_enabled = true AND viewer_settings.messaging_enabled = true AND (s.profile_visibility = 'public' OR EXISTS
                 (SELECT 1 FROM follows f WHERE f.follower_id = $2 AND f.followed_id = u.id))) AS can_message,
               count(DISTINCT f1.follower_id)::int AS follower_count,
               count(DISTINCT f2.followed_id)::int AS following_count,
@@ -50,13 +51,14 @@ export async function getUserProfile(req, res, next) {
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
        JOIN user_settings s ON s.user_id = u.id
+       JOIN user_settings viewer_settings ON viewer_settings.user_id = $2
        LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
        LEFT JOIN follows f1 ON f1.followed_id = u.id
        LEFT JOIN follows f2 ON f2.follower_id = u.id
        LEFT JOIN posts po ON po.author_id = u.id AND po.deleted_at IS NULL AND po.moderation_status = 'safe'
        WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL
        GROUP BY u.id, p.display_name, p.username, p.bio, p.age_group, avatar.storage_path,
-                s.profile_visibility`,
+                s.profile_visibility, s.messaging_enabled, viewer_settings.messaging_enabled`,
       [req.params.id, req.user.id]
     )
     if (!rows[0]) return res.status(404).json({ message: 'User not found' })
@@ -232,7 +234,10 @@ export async function getMe(req, res, next) {
     const { rows } = await pool.query(
       `SELECT u.id, p.display_name AS name, u.email, p.date_of_birth, p.age_group,
               p.username, p.bio, p.safe_zone_score, u.role, u.status,
-              (s.profile_visibility <> 'public') AS is_private
+              (s.profile_visibility <> 'public') AS is_private, s.messaging_enabled,
+              (SELECT count(*)::int FROM follows WHERE followed_id = u.id) AS follower_count,
+              (SELECT count(*)::int FROM follows WHERE follower_id = u.id) AS following_count,
+              (SELECT count(*)::int FROM posts WHERE author_id = u.id AND deleted_at IS NULL AND moderation_status = 'safe') AS post_count
        FROM users u JOIN user_profiles p ON p.user_id = u.id JOIN user_settings s ON s.user_id = u.id
        WHERE u.id = $1`,
       [req.user.id]
@@ -245,7 +250,7 @@ export async function getMe(req, res, next) {
 
 export async function updateMe(req, res, next) {
   try {
-    const { name, bio, isPrivate } = req.body
+    const { name, username, bio, isPrivate } = req.body
 
     if (name) {
       const check = validateDisplayName(name)
@@ -262,12 +267,14 @@ export async function updateMe(req, res, next) {
       }
     }
 
+    const normalizedUsername = username?.trim().toLowerCase()
+    if (normalizedUsername && !/^[a-z0-9_]{3,30}$/.test(normalizedUsername)) return res.status(400).json({ message: 'Username must be 3–30 letters, numbers, or underscores.' })
     const { rows } = await pool.query(
       `UPDATE user_profiles SET display_name = COALESCE($1, display_name),
-         bio = COALESCE($2, bio), updated_at = now()
-       WHERE user_id = $3
+         username = COALESCE($2, username), bio = COALESCE($3, bio), updated_at = now()
+       WHERE user_id = $4
        RETURNING user_id AS id, display_name AS name, username, date_of_birth, age_group, bio`,
-      [name, bio, req.user.id]
+      [name, normalizedUsername, bio, req.user.id]
     )
     if (typeof isPrivate === 'boolean') {
       await pool.query(
@@ -278,6 +285,7 @@ export async function updateMe(req, res, next) {
     if (rows[0]) rows[0].is_private = typeof isPrivate === 'boolean' ? isPrivate : undefined
     res.json({ user: rows[0], moderation })
   } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ message: 'That username is already taken.' })
     next(err)
   }
 }

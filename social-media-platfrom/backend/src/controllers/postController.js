@@ -1,4 +1,5 @@
 import { pool } from '../config/db.js'
+import { createNotification } from '../services/notificationService.js'
 import { moderate } from '../services/moderationService.js'
 import { moderateUploadedMedia } from '../services/mediaModerationService.js'
 import fs from 'node:fs/promises'
@@ -188,6 +189,8 @@ export async function toggleReaction(req, res, next) {
     const removed = await pool.query('DELETE FROM reactions WHERE user_id = $1 AND post_id = $2 RETURNING post_id', [req.user.id, req.params.postId])
     if (!removed.rowCount) {
       await pool.query(`INSERT INTO reactions (user_id, post_id, reaction) VALUES ($1,$2,'like')`, [req.user.id, req.params.postId])
+      const owner = await pool.query(`SELECT author_id FROM posts WHERE id = $1`, [req.params.postId])
+      if (owner.rows[0] && owner.rows[0].author_id !== req.user.id) await createNotification({ userId: owner.rows[0].author_id, actorId: req.user.id, category: 'likes', type: 'like', text: 'Someone liked your post', link: `/post/${req.params.postId}`, entityType: 'post', entityId: req.params.postId })
     }
     const { rows } = await pool.query(
       `UPDATE posts SET like_count = (SELECT count(*) FROM reactions WHERE post_id = $1)

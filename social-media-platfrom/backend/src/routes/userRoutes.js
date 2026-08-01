@@ -18,7 +18,8 @@ router.put(
   requireAuth,
   validateBody({
     name: { type: 'string', minLength: 2, maxLength: 60 },
-    bio: { type: 'string', maxLength: 300 },
+    username: { type: 'string', minLength: 3, maxLength: 30 },
+    bio: { type: 'string', maxLength: 200 },
     avatarUrl: { type: 'string', maxLength: 2000 },
     isPrivate: { type: 'boolean' },
   }),

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import { seedStories } from '../data/stories'
 
 const StoriesContext = createContext(null)
@@ -20,7 +20,7 @@ export function StoriesProvider({ children }) {
     return story
   }
 
-  const markViewed = (storyId) => setViewed((prev) => new Set(prev).add(storyId))
+  const markViewed = useCallback((storyId) => setViewed((prev) => new Set(prev).add(storyId)), [])
 
   const toggleLikeStory = (userId, storyId) => {
     const update = (list) =>
@@ -34,9 +34,9 @@ export function StoriesProvider({ children }) {
     }
   }
 
-  const getStories = (userId) => (userId === 'me' ? myStories : storiesByUser[userId] || [])
+  const getStories = useCallback((userId) => (userId === 'me' ? myStories : storiesByUser[userId] || []), [myStories, storiesByUser])
 
-  const hasUnseen = (userId) => getStories(userId).some((s) => !viewed.has(s.id))
+  const hasUnseen = useCallback((userId) => getStories(userId).some((s) => !viewed.has(s.id)), [getStories, viewed])
 
   const value = useMemo(
     () => ({
@@ -51,7 +51,7 @@ export function StoriesProvider({ children }) {
       activeEntryId,
       setActiveEntryId,
     }),
-    [storiesByUser, myStories, viewed, activeEntryId]
+    [storiesByUser, myStories, markViewed, getStories, hasUnseen, viewed, activeEntryId]
   )
 
   return <StoriesContext.Provider value={value}>{children}</StoriesContext.Provider>

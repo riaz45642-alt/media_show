@@ -33,7 +33,7 @@ export default function StoryViewerModal({ entries, activeId, onClose }) {
 
   useEffect(() => {
     if (story) markViewed(story.id)
-  }, [story])
+  }, [story, markViewed])
 
   // Videos must autoplay muted or mobile browsers silently block playback,
   // which used to leave the story stuck on a black frame. Force muted

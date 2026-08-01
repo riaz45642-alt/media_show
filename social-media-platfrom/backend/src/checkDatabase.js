@@ -4,7 +4,7 @@ const requiredColumns = {
   users: ['id', 'email', 'role', 'status', 'email_verified_at', 'last_login_at', 'deleted_at'],
   auth_identities: ['user_id', 'provider', 'provider_subject', 'provider_email', 'metadata', 'last_used_at'],
   user_profiles: ['user_id', 'username', 'display_name', 'age_group'],
-  user_settings: ['user_id'],
+  user_settings: ['user_id', 'profile_visibility', 'messaging_enabled', 'parent_password_hash'],
   conversations: ['id', 'kind', 'created_by'],
   conversation_members: ['conversation_id', 'user_id', 'role'],
   direct_conversation_pairs: ['user_low', 'user_high', 'conversation_id'],

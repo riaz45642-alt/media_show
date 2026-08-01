@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Users, Clock, ShieldAlert, TrendingUp, Lock } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Users, Clock, TrendingUp, Lock, X } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import Toggle from '../components/ui/Toggle'
 import { AGE_TIERS, AGE_GROUP_LABEL, AGE_GROUP_DESC } from '../utils/ageGroup'
@@ -17,8 +17,36 @@ const WEEKLY = [
 export default function ParentControls() {
   const [filterLevel, setFilterLevel] = useState(AGE_TIERS.TEEN)
   const [messaging, setMessaging] = useState(true)
-  const [locationSharing, setLocationSharing] = useState(false)
   const [dailyLimit, setDailyLimit] = useState(true)
+  const [passwordSet, setPasswordSet] = useState(false)
+  const [password, setPassword] = useState('')
+  const [pendingMessaging, setPendingMessaging] = useState(null)
+  const [controlError, setControlError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+  const headers = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('mediashow_token')}` })
+
+  useEffect(() => {
+    fetch(`${apiUrl}/parent-controls`, { headers: headers() }).then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data) => { setMessaging(data.messaging_enabled); setPasswordSet(data.parent_password_set) }).catch(() => setControlError('Unable to load parent controls.'))
+  }, [apiUrl])
+
+  const requestMessagingChange = (enabled) => { setPendingMessaging(enabled); setPassword(''); setControlError('') }
+  const confirmMessagingChange = async (event) => {
+    event.preventDefault(); setSaving(true); setControlError('')
+    try {
+      if (!passwordSet) {
+        const setup = await fetch(`${apiUrl}/parent-controls/password`, { method: 'POST', headers: headers(), body: JSON.stringify({ password }) })
+        const setupData = await setup.json().catch(() => ({}))
+        if (!setup.ok) throw new Error(setupData.message || 'Unable to create parent password.')
+        setPasswordSet(true)
+      }
+      const response = await fetch(`${apiUrl}/parent-controls/messaging`, { method: 'PATCH', headers: headers(), body: JSON.stringify({ enabled: pendingMessaging, password }) })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.message || 'Unable to update messaging.')
+      setMessaging(data.messaging_enabled); setPendingMessaging(null); setPassword('')
+    } catch (error) { setControlError(error.message) } finally { setSaving(false) }
+  }
 
   const max = Math.max(...WEEKLY.map((d) => d.minutes))
 
@@ -80,18 +108,17 @@ export default function ParentControls() {
             <Users size={17} />
           </span>
           <div className="flex-1">
-            <Toggle checked={messaging} onChange={setMessaging} label="Allow Messaging" description="Chat with approved friends only" />
-          </div>
-        </div>
-        <div className="flex items-center gap-3.5 p-4">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent-dark">
-            <ShieldAlert size={17} />
-          </span>
-          <div className="flex-1">
-            <Toggle checked={locationSharing} onChange={setLocationSharing} label="Location Sharing" description="Off by default for safety" />
+            <Toggle checked={messaging} onChange={requestMessagingChange} label="Allow Messaging" description="Protected by the parent password" />
           </div>
         </div>
       </div>
+      {pendingMessaging !== null && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><form onSubmit={confirmMessagingChange} className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl dark:bg-gray-900">
+        <div className="flex items-center justify-between"><h2 className="font-semibold">{passwordSet ? 'Confirm parent password' : 'Create parent password'}</h2><button type="button" onClick={() => setPendingMessaging(null)} aria-label="Close"><X size={18} /></button></div>
+        <p className="mt-2 text-sm text-gray-500">{passwordSet ? `Enter the parent password to ${pendingMessaging ? 'enable' : 'disable'} messaging.` : 'Create a password that only the parent or guardian knows (minimum 8 characters).'}</p>
+        <input autoFocus required minLength={8} maxLength={128} type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="mt-4 w-full rounded-xl border border-gray-200 bg-transparent px-3 py-2" />
+        {controlError && <p className="mt-2 text-sm text-red-500">{controlError}</p>}
+        <button disabled={saving} className="mt-4 w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Saving…' : 'Confirm'}</button>
+      </form></div>}
     </div>
   )
 }

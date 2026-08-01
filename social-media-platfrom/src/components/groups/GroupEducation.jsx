@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Megaphone, ClipboardList, Plus } from 'lucide-react'
 import * as groupService from '../../services/groupService'
 
@@ -9,11 +9,11 @@ export default function GroupEducation({ group }) {
   const [showAsgForm, setShowAsgForm] = useState(false)
   const canManage = ['owner', 'admin'].includes(group.my_role)
 
-  const load = () => {
+  const load = useCallback(() => {
     groupService.listAnnouncements(group.id).then(setAnnouncements)
     groupService.listAssignments(group.id).then(setAssignments)
-  }
-  useEffect(load, [group.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [group.id])
+  useEffect(() => { load() }, [load])
 
   const submitAnnouncement = async (e) => {
     e.preventDefault()

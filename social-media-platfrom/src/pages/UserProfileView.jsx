@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, Grid3x3, Images, Lock, MessageCircle, ShieldCheck, User, UserCheck, UserPlus } from 'lucide-react'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
@@ -8,6 +8,7 @@ import ProfileGrid from '../components/profile/ProfileGrid'
 import PostCard from '../components/cards/PostCard'
 import { useAuth } from '../context/AuthContext'
 import { useChat } from '../context/ChatContext'
+import CallButtons from '../components/calls/CallButtons'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
@@ -132,12 +133,12 @@ export default function UserProfileView() {
         <div className="flex justify-center"><Avatar name={profile.name} src={profile.avatar_url} size={84} ring /></div>
         <h1 className="mt-3 font-display text-lg font-bold">{profile.name}</h1>
         <p className="text-sm text-gray-400">@{profile.username}</p>
-        {profile.bio && <p className="mx-auto mt-3 max-w-md text-sm text-gray-600 dark:text-gray-300">{profile.bio}</p>}
+        {profile.bio && <p className="mx-auto mt-3 max-w-md whitespace-pre-line text-sm text-gray-600 dark:text-gray-300">{profile.bio}</p>}
         <p className="mt-2 flex items-center justify-center gap-1 text-xs text-gray-400">{profile.is_private ? <><Lock size={12} /> Private account</> : <><ShieldCheck size={12} /> Public profile</>}</p>
         <div className="mt-5 flex justify-center gap-8">
           <div><p className="font-bold">{profile.post_count}</p><p className="text-xs text-gray-400">Posts</p></div>
-          <div><p className="font-bold">{profile.follower_count}</p><p className="text-xs text-gray-400">Followers</p></div>
-          <div><p className="font-bold">{profile.following_count}</p><p className="text-xs text-gray-400">Following</p></div>
+          <Link to={`/users/${userId}/followers`}><p className="font-bold">{profile.follower_count}</p><p className="text-xs text-gray-400">Followers</p></Link>
+          <Link to={`/users/${userId}/following`}><p className="font-bold">{profile.following_count}</p><p className="text-xs text-gray-400">Following</p></Link>
         </div>
         <div className="mt-5 flex justify-center gap-2.5">
           <Button variant={profile.is_following ? 'outline' : 'primary'} size="sm" disabled={actionLoading || profile.follow_pending} onClick={handleFollow}>
@@ -145,8 +146,9 @@ export default function UserProfileView() {
             {profile.is_following ? 'Following' : profile.follow_pending ? 'Requested' : 'Follow'}
           </Button>
           <Button variant="primary" size="sm" disabled={actionLoading || !canMessage} onClick={handleMessage}><MessageCircle size={14} /> Message</Button>
+          {canMessage && <CallButtons userId={userId} userName={profile.name} />}
         </div>
-        {!canMessage && profile.is_private && <p className="mt-3 text-xs text-gray-400">This account only accepts messages from approved followers.</p>}
+        {!canMessage && <p className="mt-3 text-xs text-gray-400">{profile.messaging_enabled === false ? 'Messaging has been disabled by their parent.' : 'This account only accepts messages from approved followers.'}</p>}
         {error && <p className="mt-3 text-xs text-red-500">{error}</p>}
       </div>
 
