@@ -29,6 +29,16 @@ import { uploadDirectory } from './middleware/postUpload.js'
 
 dotenv.config()
 
+console.info(JSON.stringify({
+  level: 'info',
+  event: 'production_configuration_status',
+  configured: Object.fromEntries([
+    'DATABASE_URL', 'CLIENT_URL', 'PUBLIC_API_URL', 'SUPABASE_URL',
+    'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_STORAGE_BUCKET', 'GEMINI_API_KEY',
+    'GEMINI_MODEL', 'JWT_SECRET',
+  ].map((name) => [name, Boolean(process.env[name]?.trim())])),
+}))
+
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET is required and must contain at least 32 characters')
 }

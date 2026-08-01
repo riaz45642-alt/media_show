@@ -5,6 +5,13 @@ import { moderate } from '../services/moderationService.js'
 import { deletePublicMedia, uploadPublicMedia } from '../services/objectStorageService.js'
 
 const kindFor = (mime = '') => mime.startsWith('video/') ? 'video' : 'image'
+const logStage = (req, event, extra = {}) => console.info(JSON.stringify({
+  level: 'info', event, requestId: req.requestId, userId: req.user?.id, ...extra,
+}))
+const logFailure = (req, event, error, extra = {}) => console.error(JSON.stringify({
+  level: 'error', event, requestId: req.requestId, userId: req.user?.id, ...extra,
+  error: { name: error.name, message: error.message, code: error.code, status: error.status, stack: error.stack },
+}))
 
 export async function listStories(req, res, next) {
   try {
@@ -35,8 +42,10 @@ export async function createStory(req, res, next) {
   if (!file) return res.status(400).json({ message: 'Story image or video is required.' })
   const caption = String(req.body.caption || '').trim().slice(0, 1000)
   const visibility = ['public', 'followers', 'friends', 'private'].includes(req.body.visibility) ? req.body.visibility : 'followers'
+  logStage(req, 'story_moderation_started', { mimeType: file.mimetype, byteSize: file.size })
   const [decisions, captionDecision] = await Promise.all([moderateUploadedMedia([file]), moderate({ text: caption, userId: req.user.id, contentType: 'story' })]).catch(async (error) => {
     await fs.unlink(file.path).catch(() => {})
+    logFailure(req, 'story_moderation_failed', error)
     throw error
   })
   const decision = decisions[0]
@@ -46,6 +55,7 @@ export async function createStory(req, res, next) {
   }
   if (!decision?.available) {
     await fs.unlink(file.path).catch(() => {})
+    logStage(req, 'story_moderation_unavailable', { reason: decision?.reason })
     return res.status(503).json({
       message: 'Media safety review is temporarily unavailable. Please try again shortly.',
       code: decision?.reason || 'media_moderation_unavailable',
@@ -55,11 +65,15 @@ export async function createStory(req, res, next) {
     await fs.unlink(file.path).catch(() => {})
     return res.status(422).json({ message: `${kindFor(file.mimetype) === 'video' ? 'Video' : 'Image'} rejected`, reason: decision.reason, categories: decision.categories })
   }
+  logStage(req, 'story_moderation_completed', { safe: true, confidence: decision.confidence })
   let storedMedia
   try {
+    logStage(req, 'story_storage_upload_started', { storageConfigured: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) })
     storedMedia = await uploadPublicMedia(file, `stories/${req.user.id}`)
+    logStage(req, 'story_storage_upload_completed', { bucket: storedMedia.bucket, objectPath: storedMedia.objectPath })
   } catch (error) {
     await fs.unlink(file.path).catch(() => {})
+    logFailure(req, 'story_storage_upload_failed', error)
     if (error.code === 'OBJECT_STORAGE_NOT_CONFIGURED') {
       return res.status(503).json({
         message: 'Story storage is not configured on the server. Please contact support.',
@@ -76,6 +90,7 @@ export async function createStory(req, res, next) {
   }
   const client = await pool.connect()
   try {
+    logStage(req, 'story_database_insert_started')
     await client.query('BEGIN')
     const story = (await client.query(
       `INSERT INTO stories (author_id, caption, visibility, moderation_status)
@@ -90,10 +105,13 @@ export async function createStory(req, res, next) {
     )).rows[0]
     await client.query(`INSERT INTO story_media (story_id, media_id, position) VALUES ($1,$2,0)`, [story.id, media.id])
     await client.query('COMMIT')
+    logStage(req, 'story_database_insert_completed', { storyId: story.id, mediaId: media.id })
+    logStage(req, 'story_response_returned', { status: 201, storyId: story.id })
     res.status(201).json({ ...story, media_type: kindFor(file.mimetype), media_url: url })
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {})
     await deletePublicMedia(storedMedia)
+    logFailure(req, 'story_database_insert_failed', error)
     next(error)
   } finally { client.release() }
 }
