@@ -1,5 +1,6 @@
 import { pool } from '../config/db.js'
 import { getIO } from '../sockets/index.js'
+import { createNotification } from '../services/notificationService.js'
 
 async function getGroupConversation(groupId) {
   const { rows } = await pool.query(`SELECT id AS group_id, conversation_id FROM groups WHERE id = $1 AND deleted_at IS NULL`, [groupId])
@@ -66,6 +67,15 @@ export async function sendMessage(req, res, next) {
     const { rows: senderRows } = await pool.query(`SELECT display_name FROM user_profiles WHERE user_id = $1`, [req.user.id])
     const payload = { ...message, sender_name: senderRows[0]?.display_name, file_url: fileUrl || null, file_name: fileName || null, file_type: fileType || null }
     getIO().to(`group:${req.params.groupId}`).emit('group:message', payload)
+
+    const { rows: groupRows } = await pool.query(`SELECT name FROM groups WHERE id = $1`, [req.params.groupId])
+    const { rows: members } = await pool.query(`SELECT user_id FROM group_members WHERE group_id = $1 AND user_id <> $2`, [req.params.groupId, req.user.id])
+    await Promise.all(members.map(({ user_id }) => createNotification({
+      userId: user_id, actorId: req.user.id, category: 'messages', type: 'group_message',
+      text: `${senderRows[0]?.display_name || 'A member'} in ${groupRows[0]?.name || 'a group'}: ${(body || 'Shared media').slice(0, 100)}`,
+      link: `/groups/${req.params.groupId}`, entityType: 'group', entityId: req.params.groupId,
+      data: { groupId: req.params.groupId, groupName: groupRows[0]?.name, messageId: message.id },
+    })))
 
     res.status(201).json(payload)
   } catch (err) {

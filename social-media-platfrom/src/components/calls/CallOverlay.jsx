@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, SwitchCamera, PhoneMissed } from 'lucide-react'
+import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, SwitchCamera, PhoneMissed, Volume2, VolumeX } from 'lucide-react'
 import { useCall } from '../../context/CallContext'
 
 function formatDuration(seconds) {
@@ -9,7 +9,7 @@ function formatDuration(seconds) {
 }
 
 export default function CallOverlay() {
-  const { call, localStream, remoteStream, duration, error, setError, acceptCall, declineCall, endCall, toggleMute, toggleCamera, switchCamera } = useCall()
+  const { call, localStream, remoteStream, duration, error, setError, acceptCall, declineCall, endCall, toggleMute, toggleCamera, switchCamera, speakerOn, toggleSpeaker } = useCall()
   const localVideoRef = useRef(null)
   const remoteVideoRef = useRef(null)
   const remoteAudioRef = useRef(null)
@@ -21,6 +21,10 @@ export default function CallOverlay() {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStream
   }, [remoteStream])
+  useEffect(() => {
+    if (remoteVideoRef.current) remoteVideoRef.current.muted = !speakerOn
+    if (remoteAudioRef.current) remoteAudioRef.current.muted = !speakerOn
+  }, [speakerOn, remoteStream])
 
   if (call.phase === 'idle') return null
 
@@ -42,13 +46,12 @@ export default function CallOverlay() {
       {isVideo && call.phase === 'active' && <audio ref={remoteAudioRef} autoPlay className="hidden" />}
 
       <div className="relative z-10 mt-16 flex flex-col items-center gap-2">
-        <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white/10 text-3xl font-semibold">
-          {(call.otherUserName || '?').slice(0, 1).toUpperCase()}
-        </div>
+        {call.otherUserAvatar ? <img src={call.otherUserAvatar} alt="" className="h-24 w-24 rounded-full object-cover" /> : <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white/10 text-3xl font-semibold">{(call.otherUserName || '?').slice(0, 1).toUpperCase()}</div>}
         <h2 className="text-xl font-semibold">{call.otherUserName}</h2>
         <p className="text-white/70">
           {call.phase === 'incoming' && `Incoming ${call.kind} call...`}
           {call.phase === 'outgoing' && 'Calling...'}
+          {call.phase === 'ringing' && 'Ringing...'}
           {call.phase === 'connecting' && 'Connecting...'}
           {call.phase === 'active' && formatDuration(duration)}
           {call.phase === 'ended' && 'Call ended'}
@@ -79,10 +82,13 @@ export default function CallOverlay() {
           </>
         )}
 
-        {(call.phase === 'outgoing' || call.phase === 'connecting' || call.phase === 'active') && (
+        {(call.phase === 'outgoing' || call.phase === 'ringing' || call.phase === 'connecting' || call.phase === 'active') && (
           <>
             <button onClick={toggleMute} className="flex h-14 w-14 items-center justify-center rounded-full bg-white/15 hover:bg-white/25" aria-label="Toggle mute">
               {call.muted ? <MicOff size={22} /> : <Mic size={22} />}
+            </button>
+            <button onClick={toggleSpeaker} className="flex h-14 w-14 items-center justify-center rounded-full bg-white/15 hover:bg-white/25" aria-label="Toggle speaker">
+              {speakerOn ? <Volume2 size={22} /> : <VolumeX size={22} />}
             </button>
             {isVideo && (
               <button onClick={toggleCamera} className="flex h-14 w-14 items-center justify-center rounded-full bg-white/15 hover:bg-white/25" aria-label="Toggle camera">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ShieldCheck, MoreVertical, Trash2, Archive, Pin } from 'lucide-react'
 import Avatar from '../ui/Avatar'
 import MessageBubble from '../chat/MessageBubble'
@@ -9,7 +9,7 @@ import { useChat } from '../../context/ChatContext'
 import CallButtons from '../calls/CallButtons'
 
 export default function ConversationView({ conversation, onBack }) {
-  const { sendMessage, deleteMessage, deleteConversation, togglePin, toggleArchive, markAsRead, forwardMessage, typing, findUser, loadConversationMessages } =
+  const { sendMessage, deleteMessage, deleteConversation, togglePin, toggleArchive, markAsRead, forwardMessage, typing, findUser, loadConversationMessages, setTypingStatus } =
     useChat()
   const user = conversation.participant || findUser(conversation.participantId)
   const [replyTo, setReplyTo] = useState(null)
@@ -17,6 +17,7 @@ export default function ConversationView({ conversation, onBack }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const scrollRef = useRef(null)
   const isTyping = !!typing[conversation.id]
+  const handleTyping = useCallback((value) => setTypingStatus(conversation.id, value), [conversation.id, setTypingStatus])
 
   useEffect(() => {
     loadConversationMessages(conversation.id).catch(() => {})
@@ -144,7 +145,7 @@ export default function ConversationView({ conversation, onBack }) {
       </div>
 
       <div className="mt-3">
-        <ChatComposer onSend={handleSend} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} />
+        <ChatComposer onSend={handleSend} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} onTyping={handleTyping} />
       </div>
 
       <RecipientPickerModal

@@ -43,7 +43,7 @@ function normalizeConversation(row, currentUserId) {
 export function ChatProvider({ children }) {
   const { user } = useAuth()
   const [conversations, setConversations] = useState([])
-  const [typing] = useState({})
+  const [typing, setTyping] = useState({})
   const [loading, setLoading] = useState(false)
 
   const refreshConversations = useCallback(async () => {
@@ -87,8 +87,12 @@ export function ChatProvider({ children }) {
         } : item)
       })
     }
+    const onTyping = ({ conversationId, isTyping, isRecording }) => setTyping((previous) => ({ ...previous, [conversationId]: isRecording ? 'recording' : (isTyping ? 'typing' : null) }))
+    const onPresence = ({ userId: changedUserId, status, lastSeen }) => setConversations((previous) => previous.map((item) => item.participantId === changedUserId ? { ...item, participant: { ...item.participant, isOnline: status === 'online', lastSeen: lastSeen || item.participant.lastSeen } } : item))
     socket.on('chat:message', onMessage)
-    return () => socket.off('chat:message', onMessage)
+    socket.on('message:typing', onTyping)
+    socket.on('presence:update', onPresence)
+    return () => { socket.off('chat:message', onMessage); socket.off('message:typing', onTyping); socket.off('presence:update', onPresence) }
   }, [user?.id, conversations, refreshConversations])
 
   const getConversation = useCallback((id) => conversations.find((item) => item.id === id) || null, [conversations])
@@ -103,6 +107,7 @@ export function ChatProvider({ children }) {
   }, [conversations, refreshConversations])
 
   const loadConversationMessages = useCallback(async (conversationId, { force = false } = {}) => {
+    getSocket()?.emit('conversation:join', { conversationId })
     const existing = conversations.find((item) => item.id === conversationId)
     if (existing?.messagesLoaded && !force) return existing.messages
     const rows = await chatService.listMessages(conversationId)
@@ -112,6 +117,10 @@ export function ChatProvider({ children }) {
       : item))
     return messages
   }, [conversations, user?.id])
+
+  const setTypingStatus = useCallback((conversationId, isTyping, isRecording = false) => {
+    getSocket()?.emit('message:typing', { conversationId, isTyping, isRecording })
+  }, [])
 
   const sendMessage = useCallback(async (conversationId, payload) => {
     if (payload.type === 'image' || payload.type === 'video') {
@@ -161,7 +170,7 @@ export function ChatProvider({ children }) {
     conversations, typing, loading, unreadCount, getConversation, findUser,
     findOrCreateConversation, loadConversationMessages, refreshConversations,
     sendMessage, deleteMessage, deleteConversation, togglePin, toggleArchive,
-    markAsRead, shareContent, forwardMessage,
+    markAsRead, shareContent, forwardMessage, setTypingStatus,
   }}>{children}</ChatContext.Provider>
 }
 

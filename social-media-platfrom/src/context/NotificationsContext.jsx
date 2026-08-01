@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { useAuth } from './AuthContext'
+import { getSocket } from '../services/socketService'
+import { playNotificationTone, requestNotificationPermission, showBrowserNotification } from '../services/realtimeAlerts'
 
 const NotificationsContext = createContext(null)
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
@@ -27,6 +29,8 @@ const normalize = (item) => ({
 export function NotificationsProvider({ children }) {
   const { user } = useAuth()
   const [items, setItems] = useState([])
+  const [toasts, setToasts] = useState([])
+  const [notificationPermission, setNotificationPermission] = useState(() => 'Notification' in window ? Notification.permission : 'unsupported')
 
   const refresh = useCallback(async () => {
     if (!user) return setItems([])
@@ -34,6 +38,31 @@ export function NotificationsProvider({ children }) {
   }, [user])
 
   useEffect(() => { refresh() }, [refresh])
+
+  useEffect(() => {
+    if (!user?.id) return undefined
+    const socket = getSocket()
+    if (!socket) return undefined
+    const onNotification = (raw) => {
+      const item = normalize(raw)
+      setItems((previous) => previous.some((entry) => entry.id === item.id) ? previous : [item, ...previous])
+      const alreadyViewing = item.link && window.location.pathname === item.link
+      if (!alreadyViewing) {
+        setToasts((previous) => [...previous.slice(-2), item])
+        playNotificationTone()
+        showBrowserNotification({ title: raw.title || 'New notification', body: item.text, link: item.link || '/notifications', tag: `notification-${item.id}` })
+      }
+    }
+    socket.on('notification:new', onNotification)
+    return () => socket.off('notification:new', onNotification)
+  }, [user?.id])
+
+  const enableBrowserNotifications = async () => {
+    const permission = await requestNotificationPermission()
+    setNotificationPermission(permission)
+    return permission
+  }
+  const dismissToast = (id) => setToasts((previous) => previous.filter((item) => item.id !== id))
 
   const markAllRead = async () => {
     await request('/notifications/read-all', { method: 'POST' })
@@ -48,7 +77,7 @@ export function NotificationsProvider({ children }) {
     setItems((previous) => previous.map((item) => item.id === notificationId ? { ...item, read: true, accepted: true } : item))
   }
   const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items])
-  return <NotificationsContext.Provider value={{ items, setItems, unreadCount, markAllRead, markRead, acceptFollowRequest, refresh }}>{children}</NotificationsContext.Provider>
+  return <NotificationsContext.Provider value={{ items, setItems, unreadCount, markAllRead, markRead, acceptFollowRequest, refresh, toasts, dismissToast, notificationPermission, enableBrowserNotifications }}>{children}</NotificationsContext.Provider>
 }
 
 export const useNotifications = () => useContext(NotificationsContext)

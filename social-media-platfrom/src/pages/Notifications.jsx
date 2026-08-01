@@ -29,7 +29,7 @@ const DEFAULT_PREFS = Object.fromEntries(NOTIFICATION_CATEGORIES.filter((c) => c
 const PREFS_KEY = 'mediashow_notification_prefs'
 
 export default function Notifications() {
-  const { items, unreadCount, markAllRead, markRead, acceptFollowRequest } = useNotifications()
+  const { items, unreadCount, markAllRead, markRead, acceptFollowRequest, notificationPermission, enableBrowserNotifications } = useNotifications()
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [showPrefs, setShowPrefs] = useState(false)
@@ -64,6 +64,11 @@ export default function Notifications() {
           subtitle={unreadCount > 0 ? `${unreadCount} unread` : 'Stay in the loop, gently.'}
         />
         <div className="mt-1.5 flex shrink-0 items-center gap-2">
+          {notificationPermission === 'default' && (
+            <button onClick={enableBrowserNotifications} className="tap-scale rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white">
+              Enable browser alerts
+            </button>
+          )}
           {unreadCount > 0 && (
             <button
               onClick={markAllRead}

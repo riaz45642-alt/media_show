@@ -169,10 +169,8 @@ export async function sendDirectMessage(req, res, next) {
     if (result.status === 'rejected') return res.status(422).json({ message: 'Message rejected by moderation', reason: result.reason })
     const client = await pool.connect()
     let message
-    let firstMessage = false
     try {
       await client.query('BEGIN')
-      firstMessage = !(await client.query(`SELECT 1 FROM messages WHERE conversation_id = $1 AND deleted_at IS NULL LIMIT 1`, [req.params.conversationId])).rowCount
       message = (await client.query(
         `INSERT INTO messages (conversation_id, sender_id, reply_to_id, kind, body, moderation_status, moderation_reason, risk_score)
          VALUES ($1,$2,$3,'text',$4,$5::moderation_state,$6,$7) RETURNING *`,
@@ -185,15 +183,15 @@ export async function sendDirectMessage(req, res, next) {
       await client.query('ROLLBACK')
       throw error
     } finally { client.release() }
-    if (firstMessage) {
-      await createNotification({
-        userId: membership.rows[0].recipient_id, actorId: req.user.id, category: 'messages', type: 'message',
-        text: 'You received a new message', link: `/messages/${req.params.conversationId}`,
-        entityType: 'conversation', entityId: req.params.conversationId,
-      })
-    }
+    await createNotification({
+      userId: membership.rows[0].recipient_id, actorId: req.user.id, category: 'messages', type: 'message',
+      text: text.length > 80 ? `${text.slice(0, 77)}...` : text, link: `/messages/${req.params.conversationId}`,
+      entityType: 'conversation', entityId: req.params.conversationId,
+    })
     const payload = { ...message, status: 'delivered' }
     getIO().to(`user:${membership.rows[0].recipient_id}`).emit('chat:message', payload)
+    getIO().to(`user:${membership.rows[0].recipient_id}`).emit('message:new', payload)
+    getIO().to(`user:${membership.rows[0].recipient_id}`).emit('conversation:update', { conversationId: req.params.conversationId, message: payload })
     getIO().to(`user:${req.user.id}`).emit('chat:message-sent', payload)
     res.status(201).json(payload)
   } catch (error) { next(error) }
@@ -201,11 +199,14 @@ export async function sendDirectMessage(req, res, next) {
 
 export async function markConversationRead(req, res, next) {
   try {
-    const { rowCount } = await pool.query(
-      `UPDATE conversation_members SET last_read_at = now() WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL`,
+    const { rows, rowCount } = await pool.query(
+      `UPDATE conversation_members SET last_read_at = now() WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL
+       RETURNING last_read_at`,
       [req.params.conversationId, req.user.id]
     )
     if (!rowCount) return res.status(403).json({ message: 'Conversation access denied' })
+    const peers = await pool.query(`SELECT user_id FROM conversation_members WHERE conversation_id = $1 AND user_id <> $2 AND left_at IS NULL`, [req.params.conversationId, req.user.id])
+    for (const peer of peers.rows) getIO().to(`user:${peer.user_id}`).emit('message:read', { conversationId: req.params.conversationId, userId: req.user.id, readAt: rows[0].last_read_at })
     res.json({ ok: true })
   } catch (error) { next(error) }
 }

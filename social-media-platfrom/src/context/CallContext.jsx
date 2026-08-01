@@ -1,13 +1,20 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { getSocket } from '../services/socketService'
 import { useAuth } from './AuthContext'
+import { showBrowserNotification, startRingtone, stopRingtone } from '../services/realtimeAlerts'
 
 const CallContext = createContext(null)
 
+const turnServer = import.meta.env.VITE_TURN_URL ? [{
+  urls: import.meta.env.VITE_TURN_URL,
+  username: import.meta.env.VITE_TURN_USERNAME,
+  credential: import.meta.env.VITE_TURN_CREDENTIAL,
+}] : []
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    ...turnServer,
   ],
 }
 
@@ -21,22 +28,31 @@ export function CallProvider({ children }) {
   const [remoteStream, setRemoteStream] = useState(null)
   const [duration, setDuration] = useState(0)
   const [error, setError] = useState(null)
+  const [speakerOn, setSpeakerOn] = useState(true)
 
   const pcRef = useRef(null)
   const otherUserIdRef = useRef(null)
   const durationTimerRef = useRef(null)
   const facingModeRef = useRef('user')
+  const localStreamRef = useRef(null)
+  const callRef = useRef(initialCall)
+  const pendingCandidatesRef = useRef([])
+
+  useEffect(() => { callRef.current = call }, [call])
 
   const cleanup = useCallback(() => {
     pcRef.current?.close()
     pcRef.current = null
-    localStream?.getTracks().forEach((t) => t.stop())
+    localStreamRef.current?.getTracks().forEach((t) => t.stop())
+    localStreamRef.current = null
     setLocalStream(null)
     setRemoteStream(null)
     clearInterval(durationTimerRef.current)
     setDuration(0)
     otherUserIdRef.current = null
-  }, [localStream])
+    pendingCandidatesRef.current = []
+    stopRingtone()
+  }, [])
 
   const getMedia = async (kind) => {
     try {
@@ -44,6 +60,7 @@ export function CallProvider({ children }) {
         audio: true,
         video: kind === 'video' ? { facingMode: facingModeRef.current } : false,
       })
+      localStreamRef.current = stream
       setLocalStream(stream)
       return stream
     } catch (err) {
@@ -93,7 +110,7 @@ export function CallProvider({ children }) {
         return
       }
       otherUserIdRef.current = calleeId
-      setCall({ phase: 'outgoing', callId: res.callId, roomId: res.roomId, kind, otherUserId: calleeId, otherUserName: calleeName })
+      setCall({ phase: 'ringing', callId: res.callId, roomId: res.roomId, kind, otherUserId: calleeId, otherUserName: calleeName })
     })
   }, [cleanup])
 
@@ -101,11 +118,14 @@ export function CallProvider({ children }) {
     const socket = getSocket()
     if (!socket || call.phase !== 'incoming') return
     try {
-      await getMedia(call.kind)
+      const stream = await getMedia(call.kind)
+      const pc = createPeerConnection(call.otherUserId, call.callId)
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream))
     } catch { return }
+    stopRingtone()
     socket.emit('call:accept', { callId: call.callId })
     setCall((c) => ({ ...c, phase: 'connecting' }))
-  }, [call])
+  }, [call, createPeerConnection])
 
   const declineCall = useCallback(() => {
     const socket = getSocket()
@@ -122,22 +142,20 @@ export function CallProvider({ children }) {
   }, [call, cleanup])
 
   const toggleMute = useCallback(() => {
-    if (!localStream) return
-    const track = localStream.getAudioTracks()[0]
+    const track = localStreamRef.current?.getAudioTracks()[0]
     if (!track) return
     track.enabled = !track.enabled
     getSocket()?.emit('call:media-state', { callId: call.callId, to: otherUserIdRef.current, muted: !track.enabled })
     setCall((c) => ({ ...c, muted: !track.enabled }))
-  }, [localStream, call.callId])
+  }, [call.callId])
 
   const toggleCamera = useCallback(() => {
-    if (!localStream) return
-    const track = localStream.getVideoTracks()[0]
+    const track = localStreamRef.current?.getVideoTracks()[0]
     if (!track) return
     track.enabled = !track.enabled
     getSocket()?.emit('call:media-state', { callId: call.callId, to: otherUserIdRef.current, cameraOff: !track.enabled })
     setCall((c) => ({ ...c, cameraOff: !track.enabled }))
-  }, [localStream, call.callId])
+  }, [call.callId])
 
   const switchCamera = useCallback(async () => {
     if (!localStream || call.kind !== 'video') return
@@ -156,11 +174,12 @@ export function CallProvider({ children }) {
       setError('Could not switch camera on this device.')
     }
   }, [localStream, call.kind])
+  const toggleSpeaker = useCallback(() => setSpeakerOn((value) => !value), [])
 
   // Wire socket listeners once.
   useEffect(() => {
     const socket = getSocket()
-    if (!socket || !user) return
+    if (!socket || !user?.id) return
 
     const onIncoming = (payload) => {
       setCall((c) => {
@@ -169,46 +188,49 @@ export function CallProvider({ children }) {
           return c
         }
         otherUserIdRef.current = payload.callerId
-        return { phase: 'incoming', callId: payload.callId, roomId: payload.roomId, kind: payload.kind, otherUserId: payload.callerId, otherUserName: payload.callerName }
+        startRingtone()
+        showBrowserNotification({ title: 'Incoming call', body: `${payload.callerName || 'Someone'} is calling you.`, link: '/messages', tag: `call-${payload.callId}` })
+        return { phase: 'incoming', callId: payload.callId, roomId: payload.roomId, kind: payload.kind, otherUserId: payload.callerId, otherUserName: payload.callerName, otherUserAvatar: payload.callerAvatar }
       })
     }
 
-    const onAccepted = async ({ callId, roomId }) => {
+    const onAccepted = async ({ callId, roomId, role, peerId }) => {
+      stopRingtone()
+      otherUserIdRef.current = peerId
       setCall((c) => (c.callId === callId ? { ...c, phase: 'connecting', roomId } : c))
-      const targetUserId = otherUserIdRef.current
-      const pc = createPeerConnection(targetUserId, callId)
-      const stream = localStream
-      stream?.getTracks().forEach((t) => pc.addTrack(t, stream))
-
-      // Caller (the one who is 'outgoing') creates the offer.
-      setCall((current) => {
-        if (current.otherUserId === targetUserId && current.callId === callId) {
-          ;(async () => {
-            const offer = await pc.createOffer()
-            await pc.setLocalDescription(offer)
-            socket.emit('call:signal', { callId, to: targetUserId, data: { sdp: offer } })
-          })()
-        }
-        return current
-      })
+      let pc = pcRef.current
+      if (!pc) {
+        pc = createPeerConnection(peerId, callId)
+        const stream = localStreamRef.current
+        stream?.getTracks().forEach((track) => pc.addTrack(track, stream))
+      }
+      if (role === 'caller') {
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        socket.emit('call:signal', { callId, to: peerId, data: { sdp: offer } })
+      }
     }
+    const onRinging = ({ callId }) => setCall((current) => current.callId === callId ? { ...current, phase: 'ringing' } : current)
 
-    const onSignal = async ({ from, data }) => {
-      const pc = pcRef.current
-      if (!pc) return
+    const onSignal = async ({ callId, from, data }) => {
+      let pc = pcRef.current
+      if (!pc) {
+        pc = createPeerConnection(from, callId)
+        const stream = localStreamRef.current
+        stream?.getTracks().forEach((track) => pc.addTrack(track, stream))
+      }
       if (data.sdp) {
         await pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
+        for (const candidate of pendingCandidatesRef.current.splice(0)) await pc.addIceCandidate(candidate)
         if (data.sdp.type === 'offer') {
-          const stream = localStream
-          stream?.getTracks().forEach((t) => {
-            if (!pc.getSenders().find((s) => s.track === t)) pc.addTrack(t, stream)
-          })
           const answer = await pc.createAnswer()
           await pc.setLocalDescription(answer)
-          getSocket()?.emit('call:signal', { callId: call.callId, to: from, data: { sdp: answer } })
+          socket.emit('call:signal', { callId, to: from, data: { sdp: answer } })
         }
       } else if (data.candidate) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)) } catch { /* ignore late candidates */ }
+        const candidate = new RTCIceCandidate(data.candidate)
+        if (pc.remoteDescription) await pc.addIceCandidate(candidate)
+        else pendingCandidatesRef.current.push(candidate)
       }
     }
 
@@ -225,8 +247,10 @@ export function CallProvider({ children }) {
 
     socket.on('call:incoming', onIncoming)
     socket.on('call:accepted', onAccepted)
+    socket.on('call:ringing', onRinging)
     socket.on('call:signal', onSignal)
     socket.on('call:declined', onDeclined)
+    socket.on('call:rejected', onDeclined)
     socket.on('call:ended', onEnded)
     socket.on('call:timeout', onTimeout)
     socket.on('call:media-state', onMediaState)
@@ -234,13 +258,15 @@ export function CallProvider({ children }) {
     return () => {
       socket.off('call:incoming', onIncoming)
       socket.off('call:accepted', onAccepted)
+      socket.off('call:ringing', onRinging)
       socket.off('call:signal', onSignal)
       socket.off('call:declined', onDeclined)
+      socket.off('call:rejected', onDeclined)
       socket.off('call:ended', onEnded)
       socket.off('call:timeout', onTimeout)
       socket.off('call:media-state', onMediaState)
     }
-  }, [user, localStream, createPeerConnection, cleanup, call.callId])
+  }, [user?.id, createPeerConnection, cleanup])
 
   // Duration timer once active.
   useEffect(() => {
@@ -257,7 +283,7 @@ export function CallProvider({ children }) {
     <CallContext.Provider
       value={{
         call, localStream, remoteStream, duration, error, setError,
-        startCall, acceptCall, declineCall, endCall, toggleMute, toggleCamera, switchCamera,
+        startCall, acceptCall, declineCall, endCall, toggleMute, toggleCamera, switchCamera, speakerOn, toggleSpeaker,
       }}
     >
       {children}

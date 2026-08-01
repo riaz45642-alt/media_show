@@ -1,14 +1,24 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Send, Smile, Image as ImageIcon, X, CornerUpLeft } from 'lucide-react'
 import EmojiPicker from './EmojiPicker'
 import ContentFilterWarning from '../common/ContentFilterWarning'
 import { filterTextContent } from '../../utils/contentFilter'
 
-export default function ChatComposer({ onSend, replyTo, onCancelReply }) {
+export default function ChatComposer({ onSend, replyTo, onCancelReply, onTyping }) {
   const [text, setText] = useState('')
   const [emojiOpen, setEmojiOpen] = useState(false)
   const fileInputRef = useRef(null)
   const [blockedTerms, setBlockedTerms] = useState([])
+  const typingTimerRef = useRef(null)
+  useEffect(() => () => { clearTimeout(typingTimerRef.current); onTyping?.(false) }, [onTyping])
+
+  const handleTextChange = (value) => {
+    setText(value)
+    setBlockedTerms([])
+    onTyping?.(Boolean(value.trim()))
+    clearTimeout(typingTimerRef.current)
+    typingTimerRef.current = setTimeout(() => onTyping?.(false), 1200)
+  }
 
   const send = (e) => {
     e.preventDefault()
@@ -20,6 +30,7 @@ export default function ChatComposer({ onSend, replyTo, onCancelReply }) {
     const isLink = /^https?:\/\/\S+$/i.test(trimmed)
     onSend({ type: isLink ? 'link' : 'text', text: trimmed, replyTo: replyTo?.id || null })
     setText('')
+    onTyping?.(false)
     setEmojiOpen(false)
   }
 
@@ -70,7 +81,7 @@ export default function ChatComposer({ onSend, replyTo, onCancelReply }) {
         <div className="relative flex-1">
           <input
             value={text}
-            onChange={(e) => { setText(e.target.value); setBlockedTerms([]) }}
+            onChange={(e) => handleTextChange(e.target.value)}
             placeholder="Type a message…"
             aria-invalid={blockedTerms.length > 0}
             className={`focus-ring w-full rounded-full border bg-white dark:bg-white/5 px-4 py-2.5 pr-10 text-sm outline-none ${blockedTerms.length ? 'border-red-500' : 'border-gray-200 dark:border-white/10'}`}

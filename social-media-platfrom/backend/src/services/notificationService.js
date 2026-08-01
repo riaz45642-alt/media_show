@@ -1,4 +1,5 @@
 import { pool } from '../config/db.js'
+import { getIO } from '../sockets/index.js'
 
 // Internal helper: insert a notification row for a user, respecting their
 // per-category preferences. Never throws — a failed notification should
@@ -15,9 +16,15 @@ export async function createNotification({ userId, actorId = null, category, typ
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) RETURNING *`,
       [userId, actorId, type || category, entityType, entityId, text.slice(0, 160), text, link || null, JSON.stringify(data)]
     )
-    return inserted[0]
+    const notification = inserted[0]
+    try {
+      getIO().to(`user:${userId}`).emit('notification:new', notification)
+    } catch {
+      // Socket.IO is not available during migrations and isolated service tests.
+    }
+    return notification
   } catch (err) {
-    console.error('createNotification failed:', err.message)
+    console.error('createNotification failed:', { message: err.message, code: err.code, stack: err.stack })
     return null
   }
 }

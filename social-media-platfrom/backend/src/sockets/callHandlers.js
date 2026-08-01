@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import { pool } from '../config/db.js'
 import { isOnline } from '../services/presenceService.js'
+import { createNotification } from '../services/notificationService.js'
 
 const RING_TIMEOUT_MS = 30_000
 const ringingTimers = new Map() // callId -> Timeout
@@ -20,6 +21,15 @@ async function logEvent(callId, userId, event, metadata = {}) {
   ).catch((err) => console.error('call_logs insert failed:', err.message))
 }
 
+async function authorizedCall(callId, userId, statuses = ['ringing', 'accepted']) {
+  const { rows } = await pool.query(
+    `SELECT c.*, cs.room_id FROM calls c LEFT JOIN call_sessions cs ON cs.call_id = c.id
+     WHERE c.id = $1 AND (c.caller_id = $2 OR c.callee_id = $2) AND c.status::text = ANY($3::text[])`,
+    [callId, userId, statuses]
+  )
+  return rows[0] || null
+}
+
 export function registerCallHandlers(io, socket) {
   const userId = socket.userId
 
@@ -31,7 +41,9 @@ export function registerCallHandlers(io, socket) {
       if (!isOnline(calleeId)) return ack?.({ error: 'offline', message: 'User is offline' })
 
       const { rows: callerRows } = await pool.query(
-        `SELECT display_name, avatar_media_id FROM user_profiles WHERE user_id = $1`,
+        `SELECT up.display_name, ma.url AS avatar_url
+         FROM user_profiles up LEFT JOIN media_assets ma ON ma.id = up.avatar_media_id
+         WHERE up.user_id = $1`,
         [userId]
       )
       const roomId = crypto.randomUUID()
@@ -54,8 +66,10 @@ export function registerCallHandlers(io, socket) {
         kind,
         callerId: userId,
         callerName: callerRows[0]?.display_name || 'Unknown',
+        callerAvatar: callerRows[0]?.avatar_url || null,
       }
       io.to(`user:${calleeId}`).emit('call:incoming', payload)
+      io.to(`user:${userId}`).emit('call:ringing', { callId, roomId })
       ack?.({ callId, roomId })
 
       const timer = setTimeout(async () => {
@@ -65,6 +79,11 @@ export function registerCallHandlers(io, socket) {
           await logEvent(callId, null, 'timeout')
           io.to(`user:${userId}`).emit('call:timeout', { callId })
           io.to(`user:${calleeId}`).emit('call:timeout', { callId })
+          await createNotification({
+            userId: calleeId, actorId: userId, category: 'messages', type: 'missed_call',
+            text: `Missed ${kind} call`, link: '/messages', entityType: 'call', entityId: callId,
+            data: { callId, kind },
+          })
         }
         ringingTimers.delete(callId)
       }, RING_TIMEOUT_MS)
@@ -77,6 +96,8 @@ export function registerCallHandlers(io, socket) {
 
   socket.on('call:accept', async ({ callId }) => {
     try {
+      const existing = await authorizedCall(callId, userId, ['ringing'])
+      if (!existing || existing.callee_id !== userId) return
       clearTimeout(ringingTimers.get(callId))
       ringingTimers.delete(callId)
 
@@ -93,14 +114,16 @@ export function registerCallHandlers(io, socket) {
       await logEvent(callId, userId, 'accept')
 
       const { rows: sess } = await pool.query(`SELECT room_id FROM call_sessions WHERE call_id = $1`, [callId])
-      io.to(`user:${caller_id}`).emit('call:accepted', { callId, roomId: sess[0]?.room_id })
-      io.to(`user:${callee_id}`).emit('call:accepted', { callId, roomId: sess[0]?.room_id })
+      io.to(`user:${caller_id}`).emit('call:accepted', { callId, roomId: sess[0]?.room_id, role: 'caller', peerId: callee_id })
+      io.to(`user:${callee_id}`).emit('call:accepted', { callId, roomId: sess[0]?.room_id, role: 'callee', peerId: caller_id })
     } catch (err) {
       console.error('call:accept failed:', err.message)
     }
   })
 
   socket.on('call:decline', async ({ callId }) => {
+    const existing = await authorizedCall(callId, userId, ['ringing'])
+    if (!existing || existing.callee_id !== userId) return
     clearTimeout(ringingTimers.get(callId))
     ringingTimers.delete(callId)
     const { rows } = await pool.query(
@@ -110,10 +133,12 @@ export function registerCallHandlers(io, socket) {
     if (!rows.length) return
     await logEvent(callId, userId, 'decline')
     io.to(`user:${rows[0].caller_id}`).emit('call:declined', { callId })
+    io.to(`user:${rows[0].caller_id}`).emit('call:rejected', { callId })
   })
 
   socket.on('call:end', async ({ callId, reason = 'ended' }) => {
     try {
+      if (!await authorizedCall(callId, userId)) return
       const { rows } = await pool.query(
         `UPDATE calls SET status = 'ended', ended_at = now(), end_reason = $2,
            duration_seconds = CASE WHEN started_at IS NOT NULL THEN GREATEST(0, EXTRACT(EPOCH FROM (now() - started_at))::int) ELSE 0 END
@@ -139,13 +164,19 @@ export function registerCallHandlers(io, socket) {
 
   // WebRTC signaling relay: offer/answer/ICE candidates pass straight
   // through to the other participant's user room.
-  socket.on('call:signal', ({ callId, to, data }) => {
+  socket.on('call:signal', async ({ callId, to, data }) => {
     if (!to || !data) return
+    const call = await authorizedCall(callId, userId, ['accepted'])
+    const expectedPeer = call && (userId === call.caller_id ? call.callee_id : call.caller_id)
+    if (expectedPeer !== to) return
     io.to(`user:${to}`).emit('call:signal', { callId, from: userId, data })
   })
 
-  socket.on('call:media-state', ({ callId, to, muted, cameraOff }) => {
+  socket.on('call:media-state', async ({ callId, to, muted, cameraOff }) => {
     if (!to) return
+    const call = await authorizedCall(callId, userId, ['accepted'])
+    const expectedPeer = call && (userId === call.caller_id ? call.callee_id : call.caller_id)
+    if (expectedPeer !== to) return
     io.to(`user:${to}`).emit('call:media-state', { callId, from: userId, muted, cameraOff })
   })
 }
