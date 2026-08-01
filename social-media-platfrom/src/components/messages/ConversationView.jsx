@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ShieldCheck, MoreVertical, Trash2, Archive, Pin } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import Avatar from '../ui/Avatar'
 import MessageBubble from '../chat/MessageBubble'
 import ChatComposer from '../chat/ChatComposer'
@@ -56,14 +57,14 @@ export default function ConversationView({ conversation, onBack }) {
           >
             <ArrowLeft size={18} />
           </button>
-          <div className="relative shrink-0">
+          <Link to={`/users/${conversation.participantId}`} className="relative shrink-0" aria-label={`Open ${user?.name || 'user'} profile`}>
             <Avatar name={user?.name || 'User'} src={user?.avatar} color={user?.color} size={38} />
             {user?.isOnline && (
               <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-secondary ring-2 ring-white dark:ring-[#0F1420]" />
             )}
-          </div>
+          </Link>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{user?.name || 'Unknown'}</p>
+            <Link to={`/users/${conversation.participantId}`} className="block truncate text-sm font-semibold text-gray-800 hover:underline dark:text-gray-100">{user?.name || 'Unknown'}</Link>
             <p className="flex items-center gap-1 text-[11px] text-gray-400">
               {isTyping ? (
                 <span className="text-primary font-medium">typing…</span>

@@ -2,8 +2,8 @@ import fs from 'node:fs/promises'
 import { pool } from '../config/db.js'
 import { moderateUploadedMedia } from '../services/mediaModerationService.js'
 import { moderate } from '../services/moderationService.js'
+import { deletePublicMedia, uploadPublicMedia } from '../services/objectStorageService.js'
 
-const publicOrigin = (req) => (process.env.PUBLIC_API_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
 const kindFor = (mime = '') => mime.startsWith('video/') ? 'video' : 'image'
 
 export async function listStories(req, res, next) {
@@ -52,6 +52,13 @@ export async function createStory(req, res, next) {
     await fs.unlink(file.path).catch(() => {})
     return res.status(422).json({ message: `${kindFor(file.mimetype) === 'video' ? 'Video' : 'Image'} rejected`, reason: decision.reason, categories: decision.categories })
   }
+  let storedMedia
+  try {
+    storedMedia = await uploadPublicMedia(file, `stories/${req.user.id}`)
+  } catch (error) {
+    await fs.unlink(file.path).catch(() => {})
+    return next(error)
+  }
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -60,18 +67,18 @@ export async function createStory(req, res, next) {
        VALUES ($1::uuid,$2,$3::visibility,'safe') RETURNING *`,
       [req.user.id, caption, visibility]
     )).rows[0]
-    const url = `${publicOrigin(req)}/uploads/${encodeURIComponent(file.filename)}`
+    const url = storedMedia.publicUrl
     const media = (await client.query(
       `INSERT INTO media_assets (owner_id, kind, storage_bucket, storage_path, mime_type, byte_size, moderation_status)
-       VALUES ($1::uuid,$2::media_kind,'uploads',$3,$4,$5,'safe') RETURNING id`,
-      [req.user.id, kindFor(file.mimetype), url, file.mimetype, file.size]
+       VALUES ($1::uuid,$2::media_kind,$3,$4,$5,$6,'safe') RETURNING id`,
+      [req.user.id, kindFor(file.mimetype), storedMedia.bucket, url, file.mimetype, file.size]
     )).rows[0]
     await client.query(`INSERT INTO story_media (story_id, media_id, position) VALUES ($1,$2,0)`, [story.id, media.id])
     await client.query('COMMIT')
     res.status(201).json({ ...story, media_type: kindFor(file.mimetype), media_url: url })
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {})
-    await fs.unlink(file.path).catch(() => {})
+    await deletePublicMedia(storedMedia)
     next(error)
   } finally { client.release() }
 }

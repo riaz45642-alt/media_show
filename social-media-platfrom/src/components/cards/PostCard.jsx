@@ -168,9 +168,11 @@ export default function PostCard({ post }) {
 
         {post.comments.slice(-2).map((comment) => (
           <div key={comment.id} className="mt-2 flex items-start gap-2 text-sm">
-            <Avatar name={comment.author} src={comment.avatarSrc} size={26} />
+            <Link to={`/users/${comment.authorId}`} aria-label={`Open ${comment.author}'s profile`}>
+              <Avatar name={comment.author} src={comment.avatarSrc} size={26} />
+            </Link>
             <p className="min-w-0 flex-1 text-gray-700 dark:text-gray-200">
-              <span className="mr-1 font-semibold text-gray-900 dark:text-white">{comment.author}</span>
+              <Link to={`/users/${comment.authorId}`} className="mr-1 font-semibold text-gray-900 hover:underline dark:text-white">{comment.author}</Link>
               {comment.text}
             </p>
           </div>
