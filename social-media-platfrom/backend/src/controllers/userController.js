@@ -200,39 +200,43 @@ export async function acceptFollowRequest(req, res, next) {
 export async function listConnections(req, res, next) {
   try {
     const targetId = req.params.id === 'me' ? req.user.id : req.params.id
+    const viewerId = req.user.id
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    if (!uuidPattern.test(String(targetId))) return res.status(400).json({ message: 'Invalid user ID' })
+    if (!uuidPattern.test(String(viewerId))) return res.status(401).json({ message: 'Invalid authenticated user ID' })
     const type = req.query.type === 'following' ? 'following' : 'followers'
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20))
     const offset = Math.max(0, Number(req.query.offset) || 0)
     const access = await pool.query(
       `SELECT p.display_name AS name, COALESCE(s.profile_visibility, 'public'::visibility) AS profile_visibility,
-              ($1 = $2 OR COALESCE(s.profile_visibility, 'public'::visibility) = 'public' OR EXISTS
-                (SELECT 1 FROM follows WHERE follower_id = $2 AND followed_id = $1)) AS can_view
+              ($1::uuid = $2::uuid OR COALESCE(s.profile_visibility, 'public'::visibility) = 'public' OR EXISTS
+                (SELECT 1 FROM follows WHERE follower_id = $2::uuid AND followed_id = $1::uuid)) AS can_view
        FROM users u JOIN user_profiles p ON p.user_id = u.id LEFT JOIN user_settings s ON s.user_id = u.id
-       WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL`,
-      [targetId, req.user.id]
+       WHERE u.id = $1::uuid AND u.status = 'active' AND u.deleted_at IS NULL`,
+      [targetId, viewerId]
     )
     if (!access.rows[0]) return res.status(404).json({ message: 'User not found' })
     if (!access.rows[0].can_view) return res.status(403).json({ message: 'This account is private.' })
     const join = type === 'followers'
       ? 'JOIN user_profiles p ON p.user_id = f.follower_id JOIN users u ON u.id = f.follower_id LEFT JOIN user_settings s ON s.user_id = f.follower_id'
       : 'JOIN user_profiles p ON p.user_id = f.followed_id JOIN users u ON u.id = f.followed_id LEFT JOIN user_settings s ON s.user_id = f.followed_id'
-    const condition = type === 'followers' ? 'f.followed_id = $1' : 'f.follower_id = $1'
+    const condition = type === 'followers' ? 'f.followed_id = $1::uuid' : 'f.follower_id = $1::uuid'
     const idColumn = type === 'followers' ? 'f.follower_id' : 'f.followed_id'
     const { rows } = await pool.query(
       `SELECT ${idColumn} AS id, p.display_name AS name, p.username,
               avatar.storage_path AS avatar_url, (COALESCE(s.profile_visibility, 'public'::visibility) <> 'public') AS is_private,
-              EXISTS (SELECT 1 FROM follows mine WHERE mine.follower_id = $2 AND mine.followed_id = ${idColumn}) AS is_following,
-              ($2 <> ${idColumn}
+              EXISTS (SELECT 1 FROM follows mine WHERE mine.follower_id = $2::uuid AND mine.followed_id = ${idColumn}) AS is_following,
+              ($2::uuid <> ${idColumn}
                 AND COALESCE((to_jsonb(s)->>'messaging_enabled')::boolean, true)
                 AND COALESCE((to_jsonb(viewer_settings)->>'messaging_enabled')::boolean, true)
                 AND (COALESCE(s.profile_visibility, 'public'::visibility) = 'public' OR EXISTS
-                  (SELECT 1 FROM follows approved WHERE approved.follower_id = $2 AND approved.followed_id = ${idColumn}))) AS can_message
+                  (SELECT 1 FROM follows approved WHERE approved.follower_id = $2::uuid AND approved.followed_id = ${idColumn}))) AS can_message
        FROM follows f ${join}
-       LEFT JOIN user_settings viewer_settings ON viewer_settings.user_id = $2
+       LEFT JOIN user_settings viewer_settings ON viewer_settings.user_id = $2::uuid
        LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
        WHERE ${condition} AND u.status = 'active' AND u.deleted_at IS NULL
-       ORDER BY f.created_at DESC, ${idColumn} DESC LIMIT $3 OFFSET $4`,
-      [targetId, req.user.id, limit + 1, offset]
+       ORDER BY f.created_at DESC, ${idColumn} DESC LIMIT $3::int OFFSET $4::int`,
+      [targetId, viewerId, limit + 1, offset]
     )
     const hasMore = rows.length > limit
     res.json({ name: access.rows[0].name, users: rows.slice(0, limit), hasMore, nextOffset: hasMore ? offset + limit : null })
