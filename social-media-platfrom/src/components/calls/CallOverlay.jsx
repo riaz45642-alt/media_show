@@ -9,7 +9,7 @@ function formatDuration(seconds) {
 }
 
 export default function CallOverlay() {
-  const { call, localStream, remoteStream, duration, error, setError, acceptCall, declineCall, endCall, toggleMute, toggleCamera, switchCamera, speakerOn, toggleSpeaker } = useCall()
+  const { call, localStream, remoteStream, duration, error, setError, mediaRequesting, acceptCall, declineCall, endCall, toggleMute, toggleCamera, switchCamera, speakerOn, toggleSpeaker } = useCall()
   const localVideoRef = useRef(null)
   const remoteVideoRef = useRef(null)
   const remoteAudioRef = useRef(null)
@@ -77,11 +77,12 @@ export default function CallOverlay() {
             <button onClick={declineCall} className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600 hover:bg-red-700" aria-label="Decline call">
               <PhoneMissed size={26} />
             </button>
-            <button onClick={acceptCall} className="flex h-16 w-16 items-center justify-center rounded-full bg-green-600 hover:bg-green-700" aria-label="Accept call">
+            <button disabled={mediaRequesting} onClick={acceptCall} className="flex h-16 w-16 items-center justify-center rounded-full bg-green-600 hover:bg-green-700 disabled:cursor-wait disabled:opacity-60" aria-label={mediaRequesting ? 'Requesting device permission' : 'Accept call'}>
               <Phone size={26} />
             </button>
           </>
         )}
+        {call.phase === 'incoming' && mediaRequesting && <span className="absolute -top-8 text-xs text-white/70">Waiting for device permission…</span>}
         {call.phase === 'error' && <button onClick={() => { setError(null); endCall('failed') }} className="rounded-full bg-red-600 px-5 py-2.5 text-sm font-semibold">Close</button>}
 
         {(call.phase === 'outgoing' || call.phase === 'ringing' || call.phase === 'connecting' || call.phase === 'active') && (

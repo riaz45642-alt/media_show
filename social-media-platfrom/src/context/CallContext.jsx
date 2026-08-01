@@ -21,6 +21,17 @@ const ICE_SERVERS = {
 // call.phase: 'idle' | 'outgoing' | 'incoming' | 'connecting' | 'active' | 'ended' | 'error'
 const initialCall = { phase: 'idle' }
 
+async function readMediaPermission(name) {
+  if (!navigator.permissions?.query) return 'unsupported'
+  try {
+    return (await navigator.permissions.query({ name })).state
+  } catch {
+    // Safari and some Android browsers do not expose camera/microphone
+    // through Permissions API. getUserMedia remains the authoritative check.
+    return 'unsupported'
+  }
+}
+
 export function CallProvider({ children }) {
   const { user } = useAuth()
   const [call, setCall] = useState(initialCall)
@@ -28,6 +39,8 @@ export function CallProvider({ children }) {
   const [remoteStream, setRemoteStream] = useState(null)
   const [duration, setDuration] = useState(0)
   const [error, setError] = useState(null)
+  const [mediaRequesting, setMediaRequesting] = useState(false)
+  const [mediaPermission, setMediaPermission] = useState({ microphone: 'unknown', camera: 'unknown' })
   const [speakerOn, setSpeakerOn] = useState(true)
 
   const pcRef = useRef(null)
@@ -54,27 +67,79 @@ export function CallProvider({ children }) {
     stopRingtone()
   }, [])
 
-  const getMedia = async (kind) => {
+  const getMedia = useCallback(async (kind) => {
+    const needsVideo = kind === 'video'
+    const startedAt = Date.now()
+    const before = {
+      microphone: await readMediaPermission('microphone'),
+      camera: needsVideo ? await readMediaPermission('camera') : 'not-required',
+    }
+    setMediaPermission(before)
+    console.info('[call-media]', { event: 'permission-check', kind, secureContext: window.isSecureContext, permissions: before })
+
+    if (!window.isSecureContext) {
+      const securityError = new Error('Calls require a secure HTTPS connection.')
+      securityError.name = 'SecurityError'
+      setError(securityError.message)
+      throw securityError
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const unsupportedError = new Error('This browser does not support microphone or camera access.')
+      unsupportedError.name = 'NotSupportedError'
+      setError(unsupportedError.message)
+      throw unsupportedError
+    }
+
+    setMediaRequesting(true)
     try {
+      // This is deliberately executed only from the Start/Accept button's
+      // user gesture. Incoming socket events never request device access.
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: kind === 'video' ? { facingMode: { ideal: facingModeRef.current }, width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+        video: needsVideo ? { facingMode: { ideal: facingModeRef.current } } : false,
       })
+      const after = {
+        microphone: await readMediaPermission('microphone'),
+        camera: needsVideo ? await readMediaPermission('camera') : 'not-required',
+      }
+      setMediaPermission(after)
       localStreamRef.current = stream
       setLocalStream(stream)
+      console.info('[call-media]', {
+        event: 'stream-created', kind, permissions: after,
+        audioTracks: stream.getAudioTracks().length, videoTracks: stream.getVideoTracks().length,
+        elapsedMs: Date.now() - startedAt,
+      })
       return stream
     } catch (err) {
+      const after = {
+        microphone: await readMediaPermission('microphone'),
+        camera: needsVideo ? await readMediaPermission('camera') : 'not-required',
+      }
+      setMediaPermission(after)
+      const blocked = after.microphone === 'denied' || (needsVideo && after.camera === 'denied')
+      const requestedDevices = needsVideo ? 'microphone and camera' : 'microphone'
       const messages = {
-        NotAllowedError: 'Microphone/camera permission was denied. Allow access in your browser site settings and reload.',
+        NotAllowedError: blocked
+          ? `${requestedDevices[0].toUpperCase()}${requestedDevices.slice(1)} access is blocked. Open this site's permissions, choose Allow, then tap Accept again.`
+          : `Please allow ${requestedDevices} access in the browser permission prompt, then tap Accept again.`,
         NotFoundError: `No ${kind === 'video' ? 'camera or microphone' : 'microphone'} was found on this device.`,
         NotReadableError: 'Your camera or microphone is already in use by another application.',
         OverconstrainedError: 'This device cannot satisfy the requested camera settings.',
         SecurityError: 'Calls require a secure HTTPS connection.',
+        AbortError: 'The device permission request was interrupted. Tap Accept to try again.',
       }
-      setError(messages[err.name] || 'Unable to access your camera or microphone. Check device permissions and try again.')
+      const message = messages[err.name] || `Unable to access your ${requestedDevices}. Check browser and phone permissions, then try again.`
+      setError(message)
+      console.error('[call-media]', {
+        event: 'stream-failed', kind, errorName: err.name, errorMessage: err.message,
+        permissions: after, elapsedMs: Date.now() - startedAt,
+      })
       throw err
+    } finally {
+      setMediaRequesting(false)
     }
-  }
+  }, [])
 
   const createPeerConnection = useCallback((targetUserId, callId) => {
     const socket = getSocket()
@@ -128,20 +193,22 @@ export function CallProvider({ children }) {
       }
       setCall({ phase: 'ringing', callId: res.callId, roomId: res.roomId, kind, otherUserId: calleeId, otherUserName: calleeName })
     })
-  }, [cleanup])
+  }, [cleanup, getMedia])
 
   const acceptCall = useCallback(async () => {
     const socket = getSocket()
     if (!socket || call.phase !== 'incoming') return
     try {
+      console.info('[call-media]', { event: 'accept-clicked', kind: call.kind, callId: call.callId })
       const stream = await getMedia(call.kind)
       const pc = createPeerConnection(call.otherUserId, call.callId)
       stream.getTracks().forEach((track) => pc.addTrack(track, stream))
+      console.info('[call-webrtc]', { event: 'peer-created', callId: call.callId, tracks: stream.getTracks().map((track) => track.kind) })
     } catch { return }
     stopRingtone()
     socket.emit('call:accept', { callId: call.callId })
     setCall((c) => ({ ...c, phase: 'connecting' }))
-  }, [call, createPeerConnection])
+  }, [call, createPeerConnection, getMedia])
 
   const declineCall = useCallback(() => {
     const socket = getSocket()
@@ -298,7 +365,7 @@ export function CallProvider({ children }) {
   return (
     <CallContext.Provider
       value={{
-        call, localStream, remoteStream, duration, error, setError,
+        call, localStream, remoteStream, duration, error, setError, mediaRequesting, mediaPermission,
         startCall, acceptCall, declineCall, endCall, toggleMute, toggleCamera, switchCamera, speakerOn, toggleSpeaker,
       }}
     >
