@@ -7,6 +7,10 @@ const RING_TIMEOUT_MS = 30_000
 const ringingTimers = new Map() // callId -> Timeout
 
 async function hasActiveCall(userId) {
+  await pool.query(
+    `UPDATE calls SET status = 'missed', ended_at = now(), end_reason = 'stale_timeout'
+     WHERE status = 'ringing' AND created_at < now() - interval '45 seconds'`
+  )
   const { rows } = await pool.query(
     `SELECT 1 FROM calls WHERE (caller_id = $1 OR callee_id = $1) AND status IN ('ringing','accepted') LIMIT 1`,
     [userId]
@@ -41,7 +45,7 @@ export function registerCallHandlers(io, socket) {
       if (!isOnline(calleeId)) return ack?.({ error: 'offline', message: 'User is offline' })
 
       const { rows: callerRows } = await pool.query(
-        `SELECT up.display_name, ma.url AS avatar_url
+        `SELECT up.display_name, ma.storage_path AS avatar_url
          FROM user_profiles up LEFT JOIN media_assets ma ON ma.id = up.avatar_media_id
          WHERE up.user_id = $1`,
         [userId]

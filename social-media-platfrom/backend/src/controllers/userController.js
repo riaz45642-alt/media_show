@@ -201,6 +201,8 @@ export async function listConnections(req, res, next) {
   try {
     const targetId = req.params.id === 'me' ? req.user.id : req.params.id
     const type = req.query.type === 'following' ? 'following' : 'followers'
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20))
+    const offset = Math.max(0, Number(req.query.offset) || 0)
     const access = await pool.query(
       `SELECT p.display_name AS name, s.profile_visibility,
               ($1 = $2 OR s.profile_visibility = 'public' OR EXISTS
@@ -218,14 +220,20 @@ export async function listConnections(req, res, next) {
     const idColumn = type === 'followers' ? 'f.follower_id' : 'f.followed_id'
     const { rows } = await pool.query(
       `SELECT ${idColumn} AS id, p.display_name AS name, p.username,
-              avatar.storage_path AS avatar_url, (s.profile_visibility <> 'public') AS is_private
+              avatar.storage_path AS avatar_url, (s.profile_visibility <> 'public') AS is_private,
+              EXISTS (SELECT 1 FROM follows mine WHERE mine.follower_id = $2 AND mine.followed_id = ${idColumn}) AS is_following,
+              ($2 <> ${idColumn} AND s.messaging_enabled AND viewer_settings.messaging_enabled AND
+                (s.profile_visibility = 'public' OR EXISTS
+                  (SELECT 1 FROM follows approved WHERE approved.follower_id = $2 AND approved.followed_id = ${idColumn}))) AS can_message
        FROM follows f ${join}
+       JOIN user_settings viewer_settings ON viewer_settings.user_id = $2
        LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
        WHERE ${condition} AND u.status = 'active' AND u.deleted_at IS NULL
-       ORDER BY f.created_at DESC LIMIT 100`,
-      [targetId]
+       ORDER BY f.created_at DESC, ${idColumn} DESC LIMIT $3 OFFSET $4`,
+      [targetId, req.user.id, limit + 1, offset]
     )
-    res.json({ name: access.rows[0].name, users: rows })
+    const hasMore = rows.length > limit
+    res.json({ name: access.rows[0].name, users: rows.slice(0, limit), hasMore, nextOffset: hasMore ? offset + limit : null })
   } catch (error) { next(error) }
 }
 

@@ -99,17 +99,26 @@ export function CallProvider({ children }) {
     const socket = getSocket()
     if (!socket) return setError('Not connected. Please refresh and try again.')
 
+    otherUserIdRef.current = calleeId
+    setCall({ phase: 'outgoing', kind, otherUserId: calleeId, otherUserName: calleeName })
+
     try {
       await getMedia(kind)
     } catch { return }
 
-    socket.emit('call:invite', { calleeId, kind }, (res) => {
+    socket.timeout(10_000).emit('call:invite', { calleeId, kind }, (timeoutError, res) => {
+      if (timeoutError) {
+        setError('Call server did not respond. Please check your connection and try again.')
+        cleanup()
+        setCall((current) => ({ ...current, phase: 'error' }))
+        return
+      }
       if (res?.error) {
         setError(res.message || res.error)
         cleanup()
+        setCall((current) => ({ ...current, phase: 'error' }))
         return
       }
-      otherUserIdRef.current = calleeId
       setCall({ phase: 'ringing', callId: res.callId, roomId: res.roomId, kind, otherUserId: calleeId, otherUserName: calleeName })
     })
   }, [cleanup])

@@ -26,9 +26,13 @@ export default function Profile() {
 
   useEffect(() => {
     const token = localStorage.getItem('mediashow_token')
-    fetch(`${API_URL}/users/me`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    const refresh = () => fetch(`${API_URL}/users/me`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then((response) => response.ok ? response.json() : Promise.reject())
       .then(setProfile).catch(() => {})
+    refresh()
+    window.addEventListener('follow:changed', refresh)
+    window.addEventListener('focus', refresh)
+    return () => { window.removeEventListener('follow:changed', refresh); window.removeEventListener('focus', refresh) }
   }, [user])
 
   const activePosts = tab === 'posts' ? myPosts : savedPosts

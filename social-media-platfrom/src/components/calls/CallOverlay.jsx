@@ -55,6 +55,7 @@ export default function CallOverlay() {
           {call.phase === 'connecting' && 'Connecting...'}
           {call.phase === 'active' && formatDuration(duration)}
           {call.phase === 'ended' && 'Call ended'}
+          {call.phase === 'error' && (error || 'Unable to start call')}
         </p>
         {call.remoteMuted && call.phase === 'active' && <span className="text-xs text-white/50">Their mic is muted</span>}
       </div>
@@ -81,6 +82,7 @@ export default function CallOverlay() {
             </button>
           </>
         )}
+        {call.phase === 'error' && <button onClick={() => { setError(null); endCall('failed') }} className="rounded-full bg-red-600 px-5 py-2.5 text-sm font-semibold">Close</button>}
 
         {(call.phase === 'outgoing' || call.phase === 'ringing' || call.phase === 'connecting' || call.phase === 'active') && (
           <>
