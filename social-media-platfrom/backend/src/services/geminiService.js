@@ -4,11 +4,56 @@
 // result rather than throwing, so the rest of the pipeline (rule-based +
 // human review) keeps the platform usable without the key configured.
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+const normalizeModelName = (value = '') => value.trim()
+  .replace(/^models\//i, '')
+  .replace(/:generateContent$/i, '')
+const GEMINI_MODEL = normalizeModelName(process.env.GEMINI_MODEL) || 'gemini-2.5-flash'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
+const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta'
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
 const MAX_ATTEMPTS = 3
+let resolvedModel = GEMINI_MODEL
+
+const endpointFor = (model) => `${API_ROOT}/models/${encodeURIComponent(normalizeModelName(model))}:generateContent`
+
+async function discoverGenerateContentModel(signal, excludedModel) {
+  const response = await fetch(`${API_ROOT}/models?pageSize=1000`, {
+    headers: { 'x-goog-api-key': GEMINI_API_KEY }, signal,
+  })
+  if (!response.ok) return null
+  const data = await response.json()
+  const supported = (data.models || []).filter((model) =>
+    model.supportedGenerationMethods?.includes('generateContent')
+    && normalizeModelName(model.name) !== excludedModel)
+  const preferred = supported.find((model) => /gemini-2\.0-flash$/i.test(model.name))
+    || supported.find((model) => /gemini-flash-latest$/i.test(model.name))
+    || supported.find((model) => /gemini-.*flash$/i.test(model.name))
+  return preferred ? normalizeModelName(preferred.name) : null
+}
+
+async function postGemini(body, signal) {
+  let response = await fetch(endpointFor(resolvedModel), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+    signal,
+    body: JSON.stringify(body),
+  })
+  if (response.status !== 404) return response
+
+  const discovered = await discoverGenerateContentModel(signal, resolvedModel)
+  if (!discovered || discovered === resolvedModel) return response
+  console.warn(JSON.stringify({
+    level: 'warn', event: 'gemini_model_fallback', configuredModel: GEMINI_MODEL, resolvedModel: discovered,
+  }))
+  resolvedModel = discovered
+  response = await fetch(endpointFor(resolvedModel), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+    signal,
+    body: JSON.stringify(body),
+  })
+  return response
+}
 
 export const MEDIA_MODERATION_CATEGORIES = Object.freeze([
   'sexual', 'nudity', 'pornography', 'adult_content', 'explicit_body_exposure',
@@ -148,11 +193,7 @@ async function callGemini(parts, timeoutMs = 8000) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const res = await fetch(ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
-        signal: controller.signal,
-        body: JSON.stringify({
+      const res = await postGemini({
           system_instruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
           contents: [{ role: 'user', parts }],
           safetySettings: SAFETY_SETTINGS,
@@ -162,8 +203,7 @@ async function callGemini(parts, timeoutMs = 8000) {
             responseSchema: MODERATION_SCHEMA,
             maxOutputTokens: 1200,
           },
-        }),
-      })
+        }, controller.signal)
       if (!res.ok) {
         if (RETRYABLE_STATUS.has(res.status) && attempt < MAX_ATTEMPTS) {
           await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** (attempt - 1))))
@@ -215,11 +255,7 @@ async function callGeminiMedia(parts, timeoutMs = 15000) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const response = await fetch(ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
-        signal: controller.signal,
-        body: JSON.stringify({
+      const response = await postGemini({
           system_instruction: { parts: [{ text: MEDIA_SYSTEM_INSTRUCTION }] },
           contents: [{ role: 'user', parts }],
           safetySettings: SAFETY_SETTINGS,
@@ -229,8 +265,7 @@ async function callGeminiMedia(parts, timeoutMs = 15000) {
             responseSchema: MEDIA_MODERATION_SCHEMA,
             maxOutputTokens: 500,
           },
-        }),
-      })
+        }, controller.signal)
       if (!response.ok) {
         if (RETRYABLE_STATUS.has(response.status) && attempt < MAX_ATTEMPTS) {
           await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** (attempt - 1))))

@@ -46,7 +46,10 @@ export async function createStory(req, res, next) {
   }
   if (!decision?.available) {
     await fs.unlink(file.path).catch(() => {})
-    return res.status(503).json({ message: 'Media safety review is temporarily unavailable.', reason: decision?.reason })
+    return res.status(503).json({
+      message: 'Media safety review is temporarily unavailable. Please try again shortly.',
+      code: decision?.reason || 'media_moderation_unavailable',
+    })
   }
   if (!decision.safe) {
     await fs.unlink(file.path).catch(() => {})
