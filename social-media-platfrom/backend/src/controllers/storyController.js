@@ -60,6 +60,18 @@ export async function createStory(req, res, next) {
     storedMedia = await uploadPublicMedia(file, `stories/${req.user.id}`)
   } catch (error) {
     await fs.unlink(file.path).catch(() => {})
+    if (error.code === 'OBJECT_STORAGE_NOT_CONFIGURED') {
+      return res.status(503).json({
+        message: 'Story storage is not configured on the server. Please contact support.',
+        code: error.code,
+      })
+    }
+    if (error.code === 'OBJECT_STORAGE_UPLOAD_FAILED') {
+      return res.status(502).json({
+        message: 'Story media could not be saved. Please try again shortly.',
+        code: error.code,
+      })
+    }
     return next(error)
   }
   const client = await pool.connect()
