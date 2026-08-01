@@ -70,13 +70,13 @@ export default function CreatePostModal({ open, onClose }) {
   const publish = async () => {
     setError('')
     const filtered = filterTextContent(text)
-    setBlockedTerms(filtered.matches)
+    setBlockedTerms(filtered.blockedTerms)
     if (!filtered.allowed) {
-      const firstMatch = filtered.matches[0]
+      const firstMatch = filtered.blockedTerms[0]
       const start = text.toLowerCase().indexOf(firstMatch.toLowerCase())
       textRef.current?.focus()
       if (start >= 0) textRef.current?.setSelectionRange(start, start + firstMatch.length)
-      window.alert(blockedTermAlertMessage(filtered.matches))
+      window.alert(blockedTermAlertMessage(filtered.blockedTerms))
       return
     }
     const result = await check({ text, image: media[0]?.file })

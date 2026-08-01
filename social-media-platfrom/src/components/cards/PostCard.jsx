@@ -32,9 +32,9 @@ export default function PostCard({ post }) {
 
   const saveEdit = async () => {
     const filtered = filterTextContent(draft)
-    setBlockedTerms(filtered.matches)
+    setBlockedTerms(filtered.blockedTerms)
     if (!filtered.allowed) {
-      window.alert(blockedTermAlertMessage(filtered.matches))
+      window.alert(blockedTermAlertMessage(filtered.blockedTerms))
       return
     }
     await editPost(post.id, draft.trim())
@@ -47,7 +47,7 @@ export default function PostCard({ post }) {
     if (!text) return
     const filtered = filterTextContent(text)
     if (!filtered.allowed) {
-      setCommentError(`Please change: ${filtered.matches.join(', ')}`)
+      setCommentError(`Please change: ${filtered.blockedTerms.join(', ')}`)
       return
     }
     try {

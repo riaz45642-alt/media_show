@@ -15,7 +15,7 @@ export default function ChatComposer({ onSend, replyTo, onCancelReply }) {
     const trimmed = text.trim()
     if (!trimmed) return
     const filtered = filterTextContent(trimmed)
-    setBlockedTerms(filtered.matches)
+    setBlockedTerms(filtered.blockedTerms)
     if (!filtered.allowed) return
     const isLink = /^https?:\/\/\S+$/i.test(trimmed)
     onSend({ type: isLink ? 'link' : 'text', text: trimmed, replyTo: replyTo?.id || null })

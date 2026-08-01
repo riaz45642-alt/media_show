@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { blockedTermAlertMessage } from '../../config/blockedTerms'
+import { blockedTermAlertMessage, BLOCKED_USERNAME_MESSAGE } from '../../config/blockedTerms'
 import { filterTextContent } from '../../utils/contentFilter'
 
 const TEXT_INPUT_TYPES = new Set(['text', 'search', 'url', 'tel'])
@@ -13,7 +13,8 @@ export default function ContentFilterGuard() {
       )
 
       for (const field of fields) {
-        const result = filterTextContent(field.value)
+        const identifierField = /^(user(name)?|display_?name|name)$/i.test(field.name || field.id || '')
+        const result = filterTextContent(field.value, { context: identifierField ? 'identifier' : 'text' })
         if (result.allowed) continue
 
         event.preventDefault()
@@ -21,12 +22,14 @@ export default function ContentFilterGuard() {
         field.setAttribute('aria-invalid', 'true')
         field.focus()
 
-        const firstTerm = result.matches[0]
+        const firstTerm = result.blockedTerms[0]
         const start = field.value.toLowerCase().indexOf(firstTerm.toLowerCase())
         if (start >= 0 && typeof field.setSelectionRange === 'function') {
           field.setSelectionRange(start, start + firstTerm.length)
         }
-        window.alert(blockedTermAlertMessage(result.matches))
+        window.alert(identifierField
+          ? `${BLOCKED_USERNAME_MESSAGE}\n\nPlease change: ${result.blockedTerms.join(', ')}`
+          : blockedTermAlertMessage(result.blockedTerms))
         return
       }
     }

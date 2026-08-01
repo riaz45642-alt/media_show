@@ -35,9 +35,11 @@ export default function EditProfile() {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    const filtered = filterTextContent(`${form.name} ${form.bio}`)
-    setBlockedTerms(filtered.matches)
-    if (!filtered.allowed) return
+    const nameResult = filterTextContent(form.name, { context: 'identifier' })
+    const bioResult = filterTextContent(form.bio)
+    const blocked = [...new Set([...nameResult.blockedTerms, ...bioResult.blockedTerms])]
+    setBlockedTerms(blocked)
+    if (blocked.length) return
     updateUser({ ...form, avatar: avatarPreview })
     setSaved(true)
     setTimeout(() => navigate('/profile'), 700)

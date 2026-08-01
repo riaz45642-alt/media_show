@@ -20,7 +20,7 @@ export default function CommentsSheet({ post, open, onClose }) {
     e.preventDefault()
     if (!text.trim()) return
     const filtered = filterTextContent(text)
-    setBlockedTerms(filtered.matches)
+    setBlockedTerms(filtered.blockedTerms)
     if (!filtered.allowed) return
     try {
       await addComment(post.id, text)
