@@ -128,7 +128,19 @@ export function PostsProvider({ children }) {
       body,
     })
     const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data.message || 'Post could not be published')
+    if (!response.ok) {
+      const error = new Error(data.reason || data.message || 'Post could not be published')
+      Object.assign(error, {
+        status: response.status,
+        title: data.message,
+        reason: data.reason,
+        categories: data.categories || [],
+        fileName: data.fileName,
+        mediaType: data.mediaType,
+        code: data.code,
+      })
+      throw error
+    }
     const post = normalizePost({ ...data.post, author: user?.name })
     setPosts((previous) => [post, ...previous])
     return post

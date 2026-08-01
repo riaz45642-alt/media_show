@@ -1,5 +1,6 @@
 import { pool } from '../config/db.js'
 import { moderate } from '../services/moderationService.js'
+import { moderateUploadedMedia } from '../services/mediaModerationService.js'
 import fs from 'node:fs/promises'
 
 const POST_SELECT = `
@@ -68,19 +69,41 @@ export async function createPost(req, res, next) {
     if (!text?.trim() && files.length === 0) {
       return res.status(400).json({ message: 'Post needs text, an image, or a video' })
     }
-    const firstImage = files.find((file) => file.mimetype.startsWith('image/'))
-    const image = firstImage ? {
-      base64: (await fs.readFile(firstImage.path)).toString('base64'),
-      mimeType: firstImage.mimetype,
-      sizeBytes: firstImage.size,
-    } : undefined
-
     let result
+    let mediaResults
     try {
-      result = await moderate({ text, image, userId: req.user.id, contentType: 'post' })
+      ;[result, mediaResults] = await Promise.all([
+        moderate({ text, userId: req.user.id, contentType: 'post' }),
+        moderateUploadedMedia(files),
+      ])
     } catch (error) {
       await Promise.allSettled(files.map((file) => fs.unlink(file.path)))
       throw error
+    }
+
+    const unavailable = mediaResults.find((decision) => !decision.available)
+    if (unavailable) {
+      await Promise.allSettled(files.map((file) => fs.unlink(file.path)))
+      return res.status(503).json({
+        message: 'Media safety review is temporarily unavailable. Please try again.',
+        reason: 'We could not complete the media safety review. Please try again shortly.',
+        code: unavailable.reason,
+        fileName: unavailable.fileName,
+      })
+    }
+
+    const rejectedMedia = mediaResults.find((decision) => !decision.safe)
+    if (rejectedMedia) {
+      await Promise.allSettled(files.map((file) => fs.unlink(file.path)))
+      const kind = rejectedMedia.mediaType.startsWith('video/') ? 'Video' : 'Image'
+      return res.status(422).json({
+        message: `${kind} rejected`,
+        reason: rejectedMedia.reason || `${kind} violates our community guidelines.`,
+        categories: rejectedMedia.categories,
+        confidence: rejectedMedia.confidence,
+        fileName: rejectedMedia.fileName,
+        mediaType: rejectedMedia.mediaType,
+      })
     }
     const client = await pool.connect()
     let post

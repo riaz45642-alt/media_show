@@ -10,6 +10,36 @@ const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMI
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
 const MAX_ATTEMPTS = 3
 
+export const MEDIA_MODERATION_CATEGORIES = Object.freeze([
+  'sexual', 'nudity', 'pornography', 'adult_content', 'explicit_body_exposure',
+  'sexually_suggestive_swimwear', 'lingerie', 'erotic_pose', 'violence', 'blood',
+  'gore', 'dead_body', 'serious_injury', 'torture', 'animal_cruelty', 'weapon',
+  'gun', 'rifle', 'explosive', 'bomb', 'violent_knife_use', 'drugs', 'cocaine',
+  'marijuana', 'heroin', 'pills', 'drug_consumption', 'self_harm', 'suicide',
+  'cutting', 'hanging', 'dangerous_self_injury', 'hate_symbol', 'nazi_symbol',
+  'racist_content', 'terrorist_imagery', 'criminal_activity', 'human_trafficking',
+  'child_abuse', 'child_exploitation', 'gambling', 'alcohol_abuse', 'smoking',
+  'offensive_gesture', 'adult_advertisement', 'illegal_activity',
+])
+
+const MEDIA_SYSTEM_INSTRUCTION = `You are a strict visual safety classifier for a family-friendly social media platform used by children and teenagers.
+Analyze the supplied image or extracted video frame. Detect nudity, pornography, sexual content, explicit body exposure, sexually suggestive bikini/lingerie imagery, erotic poses, violence, blood, gore, dead bodies, serious injuries, torture, animal cruelty, weapons, guns, rifles, explosives, bombs, knives used violently, drugs and drug consumption, self-harm, suicide attempts, cutting, hanging, dangerous self-injury, hate or Nazi symbols, racist or terrorist content, criminal activity, human trafficking, child abuse or exploitation, gambling, alcohol abuse, smoking, offensive gestures, adult advertisements, and illegal activities.
+Return ONLY JSON matching the response schema. Set safe=false whenever content is unsuitable for this audience. Do not identify people or infer protected personal attributes.`
+
+const MEDIA_MODERATION_SCHEMA = {
+  type: 'OBJECT',
+  required: ['safe', 'reason', 'categories', 'confidence'],
+  properties: {
+    safe: { type: 'BOOLEAN' },
+    reason: { type: 'STRING' },
+    categories: {
+      type: 'ARRAY',
+      items: { type: 'STRING', enum: MEDIA_MODERATION_CATEGORIES },
+    },
+    confidence: { type: 'NUMBER', minimum: 0, maximum: 1 },
+  },
+}
+
 const SAFETY_SETTINGS = [
   'HARM_CATEGORY_HARASSMENT',
   'HARM_CATEGORY_HATE_SPEECH',
@@ -160,6 +190,78 @@ async function callGemini(parts, timeoutMs = 8000) {
   return emptyResult('gemini_call_failed')
 }
 
+function unavailableMediaResult(reason) {
+  return { available: false, safe: false, reason, categories: [], confidence: 0 }
+}
+
+function parseMediaJson(text) {
+  const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+  const categories = Array.isArray(parsed.categories)
+    ? parsed.categories.filter((category) => MEDIA_MODERATION_CATEGORIES.includes(category))
+    : []
+  return {
+    available: true,
+    safe: parsed.safe === true,
+    reason: String(parsed.reason || ''),
+    categories,
+    confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
+  }
+}
+
+async function callGeminiMedia(parts, timeoutMs = 15000) {
+  if (!GEMINI_API_KEY) return unavailableMediaResult('gemini_api_key_not_configured')
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+        signal: controller.signal,
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: MEDIA_SYSTEM_INSTRUCTION }] },
+          contents: [{ role: 'user', parts }],
+          safetySettings: SAFETY_SETTINGS,
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: 'application/json',
+            responseSchema: MEDIA_MODERATION_SCHEMA,
+            maxOutputTokens: 500,
+          },
+        }),
+      })
+      if (!response.ok) {
+        if (RETRYABLE_STATUS.has(response.status) && attempt < MAX_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** (attempt - 1))))
+          continue
+        }
+        return unavailableMediaResult(`gemini_http_${response.status}`)
+      }
+      const data = await response.json()
+      if (data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason === 'SAFETY') {
+        return {
+          available: true,
+          safe: false,
+          reason: 'Media was blocked by Gemini safety filters.',
+          categories: ['adult_content'],
+          confidence: 0.99,
+        }
+      }
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
+      return text ? parseMediaJson(text) : unavailableMediaResult('gemini_empty_response')
+    } catch (error) {
+      if (attempt === MAX_ATTEMPTS || error.name === 'AbortError') {
+        return unavailableMediaResult(error.name === 'AbortError' ? 'gemini_timeout' : 'gemini_call_failed')
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** (attempt - 1))))
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  return unavailableMediaResult('gemini_call_failed')
+}
+
 /** Analyze text content for toxicity/hate/harassment/etc. */
 export async function analyzeTextWithGemini(text) {
   if (!text?.trim()) return emptyResult('no_text')
@@ -176,6 +278,15 @@ export async function analyzeImageWithGemini(image) {
   return callGemini([
     { text: 'Analyze this image for unsafe content per the categories described.' },
     { inline_data: { mime_type: image.mimeType || 'image/jpeg', data: image.base64 } },
+  ])
+}
+
+/** Strict family-safety decision for one uploaded image or extracted video frame. */
+export async function analyzeMediaFrameWithGemini({ base64, mimeType = 'image/jpeg' } = {}) {
+  if (!base64) return unavailableMediaResult('no_media_data')
+  return callGeminiMedia([
+    { text: 'Analyze this uploaded media frame for family-friendly safety.' },
+    { inline_data: { mime_type: mimeType, data: base64 } },
   ])
 }
 

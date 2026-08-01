@@ -46,6 +46,7 @@ export default function CreatePostModal({ open, onClose }) {
       type: file.type.startsWith('video') ? 'video' : 'image',
       src: URL.createObjectURL(file),
       file,
+      rejected: false,
     }))
     setMedia((prev) => {
       const combined = [...prev, ...items].slice(0, 6)
@@ -69,6 +70,7 @@ export default function CreatePostModal({ open, onClose }) {
 
   const publish = async () => {
     setError('')
+    setMedia((current) => current.map((item) => ({ ...item, rejected: false })))
     const filtered = filterTextContent(text)
     setBlockedTerms(filtered.blockedTerms)
     if (!filtered.allowed) {
@@ -92,9 +94,19 @@ export default function CreatePostModal({ open, onClose }) {
     try {
       await addPost({ text, media, type })
     } catch (err) {
-      setError(err.message)
+      if (err.fileName) {
+        setMedia((current) => current.map((item) => ({
+          ...item,
+          rejected: item.file.name === err.fileName,
+        })))
+      }
+      const fallback = err.mediaType?.startsWith('video/')
+        ? 'This video contains inappropriate content and cannot be uploaded.'
+        : 'This image violates our community guidelines.'
+      setError(err.reason || err.message || fallback)
       return
     }
+    media.forEach((item) => URL.revokeObjectURL(item.src))
     reset()
     onClose()
   }
@@ -115,7 +127,10 @@ export default function CreatePostModal({ open, onClose }) {
       {media.length > 0 && (
         <div className="mt-3 grid grid-cols-3 gap-2">
           {media.map((m, i) => (
-            <div key={i} className="relative aspect-square overflow-hidden rounded-xl bg-black/5">
+            <div
+              key={`${m.file.name}-${i}`}
+              className={`relative aspect-square overflow-hidden rounded-xl bg-black/5 ${m.rejected ? 'ring-2 ring-red-500 ring-offset-2 dark:ring-offset-gray-950' : ''}`}
+            >
               {m.type === 'video' ? (
                 <video src={m.src} className="h-full w-full object-cover" muted />
               ) : (
@@ -128,6 +143,11 @@ export default function CreatePostModal({ open, onClose }) {
               >
                 <X size={13} />
               </button>
+              {m.rejected && (
+                <span className="absolute bottom-1 left-1 rounded-md bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  Rejected
+                </span>
+              )}
             </div>
           ))}
         </div>
