@@ -7,7 +7,7 @@
 const normalizeModelName = (value = '') => value.trim()
   .replace(/^models\//i, '')
   .replace(/:generateContent$/i, '')
-const GEMINI_MODEL = normalizeModelName(process.env.GEMINI_MODEL) || 'gemini-2.5-flash'
+const GEMINI_MODEL = normalizeModelName(process.env.GEMINI_MODEL) || 'gemini-flash-latest'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta'
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
@@ -25,8 +25,9 @@ async function discoverGenerateContentModel(signal, excludedModel) {
   const supported = (data.models || []).filter((model) =>
     model.supportedGenerationMethods?.includes('generateContent')
     && normalizeModelName(model.name) !== excludedModel)
-  const preferred = supported.find((model) => /gemini-2\.0-flash$/i.test(model.name))
-    || supported.find((model) => /gemini-flash-latest$/i.test(model.name))
+  const preferred = supported.find((model) => /gemini-flash-latest$/i.test(model.name))
+    || supported.find((model) => /gemini-3.*flash$/i.test(model.name))
+    || supported.find((model) => /gemini-2\.0-flash$/i.test(model.name))
     || supported.find((model) => /gemini-.*flash$/i.test(model.name))
   return preferred ? normalizeModelName(preferred.name) : null
 }
@@ -38,7 +39,27 @@ async function postGemini(body, signal) {
     signal,
     body: JSON.stringify(body),
   })
-  if (response.status !== 404) return response
+  if (![404, 429].includes(response.status)) return response
+
+  // The stable 2.x models may be retired for newer accounts or have a
+  // separate exhausted quota while the provider's current Flash alias works.
+  // Try the official latest alias before falling back to model discovery.
+  if (resolvedModel !== 'gemini-flash-latest') {
+    const aliasResponse = await fetch(endpointFor('gemini-flash-latest'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+      signal,
+      body: JSON.stringify(body),
+    })
+    if (aliasResponse.ok || ![404, 429].includes(aliasResponse.status)) {
+      console.warn(JSON.stringify({
+        level: 'warn', event: 'gemini_model_fallback', configuredModel: GEMINI_MODEL, resolvedModel: 'gemini-flash-latest',
+      }))
+      resolvedModel = 'gemini-flash-latest'
+      return aliasResponse
+    }
+    response = aliasResponse
+  }
 
   const discovered = await discoverGenerateContentModel(signal, resolvedModel)
   if (!discovered || discovered === resolvedModel) return response
