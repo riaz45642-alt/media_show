@@ -18,12 +18,14 @@ export default function Messages() {
   const [showArchived, setShowArchived] = useState(false)
   const [people, setPeople] = useState([])
   const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState('')
   const debouncedQuery = useDebouncedValue(query, 200)
 
   useEffect(() => {
     if (!debouncedQuery.trim()) { setPeople([]); return }
     let active = true
     setSearching(true)
+    setSearchError('')
     chatService.searchUsers(debouncedQuery.trim())
       .then((rows) => active && setPeople(rows))
       .catch(() => active && setPeople([]))
@@ -33,8 +35,12 @@ export default function Messages() {
 
   const openUser = async (person) => {
     if (!person.can_message) return
-    const conversation = await findOrCreateConversation(person.id)
-    navigate(`/messages/${conversation.id}`)
+    try {
+      const conversation = await findOrCreateConversation(person.id)
+      navigate(`/messages/${conversation.id}`)
+    } catch {
+      setSearchError('Unable to start conversation.')
+    }
   }
 
   const activeConversation = useMemo(
@@ -113,6 +119,7 @@ export default function Messages() {
             </button>
           ))}
           {!searching && people.length === 0 && <p className="p-3 text-center text-xs text-gray-400">No users found.</p>}
+          {searchError && <p className="p-3 text-center text-xs text-red-500">{searchError}</p>}
         </div>
       )}
 

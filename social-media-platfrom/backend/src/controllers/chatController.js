@@ -1,6 +1,7 @@
 import { pool } from '../config/db.js'
 import { moderate } from '../services/moderationService.js'
 import { createNotification } from '../services/notificationService.js'
+import { getIO } from '../sockets/index.js'
 
 async function canMessage(requesterId, targetId, client = pool) {
   const { rows } = await client.query(
@@ -191,7 +192,10 @@ export async function sendDirectMessage(req, res, next) {
         entityType: 'conversation', entityId: req.params.conversationId,
       })
     }
-    res.status(201).json({ ...message, status: 'delivered' })
+    const payload = { ...message, status: 'delivered' }
+    getIO().to(`user:${membership.rows[0].recipient_id}`).emit('chat:message', payload)
+    getIO().to(`user:${req.user.id}`).emit('chat:message-sent', payload)
+    res.status(201).json(payload)
   } catch (error) { next(error) }
 }
 

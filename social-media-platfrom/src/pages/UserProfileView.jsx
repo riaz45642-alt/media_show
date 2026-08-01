@@ -5,6 +5,7 @@ import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import EmptyState from '../components/common/EmptyState'
 import ProfileGrid from '../components/profile/ProfileGrid'
+import PostCard from '../components/cards/PostCard'
 import { useAuth } from '../context/AuthContext'
 import { useChat } from '../context/ChatContext'
 
@@ -46,19 +47,29 @@ export default function UserProfileView() {
   const [loadingPosts, setLoadingPosts] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState('')
+  const [postsError, setPostsError] = useState('')
   const [tab, setTab] = useState('posts')
 
   const loadPosts = useCallback(async (cursor = '', replace = false) => {
     setLoadingPosts(true)
+    setPostsError('')
+    const requestUrl = `${API_URL}/users/${userId}/posts?limit=12${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
+    console.debug('[profile-posts] request', { requestUrl, userId })
     try {
-      const response = await fetch(`${API_URL}/users/${userId}/posts?limit=12${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { headers: authHeaders() })
+      const response = await fetch(requestUrl, { headers: authHeaders() })
+      console.debug('[profile-posts] response', { userId, status: response.status })
       if (response.status === 403) { setPosts([]); setHasMore(false); return }
-      if (!response.ok) throw new Error('Posts could not be loaded')
+      if (!response.ok) throw new Error('Unable to load posts.')
       const data = await response.json()
+      if (!Array.isArray(data.posts)) throw new Error('Unable to load posts.')
+      console.debug('[profile-posts] payload', { userId, postCount: data.posts.length, hasMore: Boolean(data.hasMore) })
       const normalized = data.posts.map(normalizePost)
       setPosts((previous) => replace ? normalized : [...previous, ...normalized])
       setNextCursor(data.nextCursor)
       setHasMore(Boolean(data.hasMore))
+    } catch (requestError) {
+      console.error('[profile-posts] failed', { userId, requestUrl, message: requestError.message })
+      setPostsError('Unable to load posts.')
     } finally { setLoadingPosts(false) }
   }, [userId])
 
@@ -95,16 +106,21 @@ export default function UserProfileView() {
   }
 
   const handleMessage = async () => {
-    if (!profile?.can_message) return
+    const canMessage = profile?.can_message ?? !profile?.is_private
+    if (!canMessage) return
     setActionLoading(true)
     try {
       const conversation = await findOrCreateConversation(userId)
       navigate(`/messages/${conversation.id}`)
-    } catch (requestError) { setError(requestError.message) }
+    } catch (requestError) {
+      console.error('[direct-chat] failed to start conversation', { userId, message: requestError.message })
+      setError('Unable to start conversation.')
+    }
     finally { setActionLoading(false) }
   }
 
   const visiblePosts = useMemo(() => tab === 'media' ? posts.filter((post) => post.media.length > 0) : posts, [posts, tab])
+  const canMessage = profile?.can_message ?? !profile?.is_private
 
   if (loading) return <p className="py-10 text-center text-sm text-gray-400">Loading profile...</p>
   if (!profile) return <EmptyState icon={User} title="User not found" description={error || 'This profile is no longer available.'} />
@@ -128,9 +144,9 @@ export default function UserProfileView() {
             {profile.is_following ? <UserCheck size={14} /> : <UserPlus size={14} />}
             {profile.is_following ? 'Following' : profile.follow_pending ? 'Requested' : 'Follow'}
           </Button>
-          <Button variant="primary" size="sm" disabled={actionLoading || !profile.can_message} onClick={handleMessage}><MessageCircle size={14} /> Message</Button>
+          <Button variant="primary" size="sm" disabled={actionLoading || !canMessage} onClick={handleMessage}><MessageCircle size={14} /> Message</Button>
         </div>
-        {!profile.can_message && profile.is_private && <p className="mt-3 text-xs text-gray-400">This account only accepts messages from approved followers.</p>}
+        {!canMessage && profile.is_private && <p className="mt-3 text-xs text-gray-400">This account only accepts messages from approved followers.</p>}
         {error && <p className="mt-3 text-xs text-red-500">{error}</p>}
       </div>
 
@@ -145,9 +161,13 @@ export default function UserProfileView() {
             <EmptyState icon={Lock} title="This account is private" description="Follow this account to see its posts." />
           ) : loadingPosts && posts.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-400">Loading posts...</p>
+          ) : postsError ? (
+            <EmptyState icon={Grid3x3} title="Unable to load posts." description="Please check your connection and try again." />
           ) : visiblePosts.length === 0 ? (
             <EmptyState icon={tab === 'media' ? Images : Grid3x3} title={tab === 'media' ? 'No media yet.' : 'No posts yet.'} description="Nothing has been shared here yet." />
-          ) : <ProfileGrid posts={visiblePosts} />}
+          ) : tab === 'media' ? <ProfileGrid posts={visiblePosts} /> : (
+            <div className="space-y-5">{visiblePosts.map((post) => <PostCard key={post.id} post={post} />)}</div>
+          )}
         </div>
         {hasMore && <div className="mt-4 text-center"><Button variant="outline" size="sm" disabled={loadingPosts} onClick={() => loadPosts(nextCursor)}>{loadingPosts ? 'Loading...' : 'Load more'}</Button></div>}
       </section>

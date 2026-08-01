@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { useAuth } from './AuthContext'
 import * as chatService from '../services/chatService'
+import { getSocket } from '../services/socketService'
 
 const ChatContext = createContext(null)
 
@@ -63,6 +64,32 @@ export function ChatProvider({ children }) {
     if (user?.id) refreshConversations().catch(() => setConversations([]))
     else setConversations([])
   }, [user?.id, refreshConversations])
+
+  useEffect(() => {
+    if (!user?.id) return undefined
+    const socket = getSocket()
+    if (!socket) return undefined
+    const onMessage = (message) => {
+      const normalized = normalizeMessage(message, user.id)
+      if (!conversations.some((item) => item.id === message.conversation_id)) {
+        refreshConversations().catch(() => {})
+        return
+      }
+      setConversations((previous) => {
+        const index = previous.findIndex((item) => item.id === message.conversation_id)
+        if (index < 0) return previous
+        return previous.map((item, itemIndex) => itemIndex === index ? {
+          ...item,
+          messages: item.messages.some((existing) => existing.id === normalized.id)
+            ? item.messages
+            : [...item.messages, normalized],
+          unread: item.unread + 1,
+        } : item)
+      })
+    }
+    socket.on('chat:message', onMessage)
+    return () => socket.off('chat:message', onMessage)
+  }, [user?.id, conversations, refreshConversations])
 
   const getConversation = useCallback((id) => conversations.find((item) => item.id === id) || null, [conversations])
   const findUser = useCallback((id) => conversations.find((item) => item.participantId === id)?.participant || null, [conversations])
