@@ -74,9 +74,10 @@ export async function login(req, res, next) {
     const { email, password } = req.body
     const { rows } = await pool.query(
       `SELECT u.*, p.display_name AS name, p.username, p.date_of_birth, p.age_group,
-              p.bio, p.safe_zone_score
+              p.bio, p.safe_zone_score, (s.profile_visibility <> 'public') AS is_private
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
+       JOIN user_settings s ON s.user_id = u.id
        WHERE u.email = $1 AND u.deleted_at IS NULL`,
       [email.toLowerCase()]
     )
@@ -193,8 +194,9 @@ export async function firebaseLogin(req, res, next) {
     const { rows } = await pool.query(
       `SELECT u.id, u.email, u.role, u.status, u.created_at,
               p.display_name AS name, p.username, p.date_of_birth, p.age_group,
-              p.bio, p.safe_zone_score, $2::text AS avatar
-       FROM users u JOIN user_profiles p ON p.user_id = u.id
+              p.bio, p.safe_zone_score, $2::text AS avatar,
+              (s.profile_visibility <> 'public') AS is_private
+       FROM users u JOIN user_profiles p ON p.user_id = u.id JOIN user_settings s ON s.user_id = u.id
        WHERE u.id = $1`,
       [userId, decoded.picture || null]
     )

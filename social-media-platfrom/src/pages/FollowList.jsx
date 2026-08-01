@@ -1,76 +1,39 @@
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ChevronLeft, Lock, Users } from 'lucide-react'
 import Avatar from '../components/ui/Avatar'
 import EmptyState from '../components/common/EmptyState'
-import { useAuth } from '../context/AuthContext'
-import { USERS, FOLLOWERS, FOLLOWING } from '../data/users'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 export default function FollowList({ type }) {
   const { userId } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
-
-  const viewingOwnProfile = !userId
-  const target = viewingOwnProfile ? null : USERS.find((u) => u.id === userId)
-  const displayName = viewingOwnProfile ? user?.name || 'You' : target?.name || 'User'
+  const [state, setState] = useState({ loading: true, users: [], name: '', private: false })
   const title = type === 'followers' ? 'Followers' : 'Following'
 
-  // Reuse the shared mock pool (minus the profile owner) as that user's list.
-  const list = (type === 'followers' ? FOLLOWERS : FOLLOWING).filter((u) => u.id !== userId)
+  useEffect(() => {
+    let active = true
+    const token = localStorage.getItem('mediashow_token')
+    fetch(`${API_URL}/users/${userId || 'me'}/connections?type=${type}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(async (response) => {
+        if (response.status === 403) return { private: true, users: [] }
+        if (!response.ok) throw new Error('List could not be loaded')
+        return response.json()
+      })
+      .then((data) => active && setState({ loading: false, users: data.users || [], name: data.name || '', private: Boolean(data.private) }))
+      .catch(() => active && setState({ loading: false, users: [], name: '', private: false }))
+    return () => { active = false }
+  }, [userId, type])
 
-  // Privacy gate: your own lists are always visible to you. Someone else's
-  // private account only shows its lists to accounts they've approved —
-  // approximated here as "the current user already follows them".
-  const isPrivateTarget = !viewingOwnProfile && target?.isPrivate
-  const isApprovedFollower = FOLLOWING.some((u) => u.id === userId)
-  const canView = viewingOwnProfile || !isPrivateTarget || isApprovedFollower
-
-  return (
-    <div>
-      <div className="mb-5 flex items-center gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="tap-scale flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-white/5 shadow-card text-gray-500"
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <div>
-          <h1 className="font-display text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h1>
-          <p className="text-xs text-gray-400">{displayName}{canView ? ` · ${list.length}` : ''}</p>
-        </div>
-      </div>
-
-      {!canView ? (
-        <EmptyState
-          icon={Lock}
-          title="This account is private"
-          description={`Only approved followers can see ${displayName}'s ${title.toLowerCase()}.`}
-        />
-      ) : list.length === 0 ? (
-        <EmptyState icon={Users} title={`No ${title.toLowerCase()} yet`} description="This list is empty right now." />
-      ) : (
-        <div className="space-y-2">
-          {list.map((u) => (
-            <Link
-              key={u.id}
-              to={`/users/${u.id}`}
-              className="soft-card flex items-center gap-3.5 p-4 hover-lift animate-slideUp"
-            >
-              <Avatar name={u.name} src={u.avatar} color={u.color} size={46} />
-              <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-800 dark:text-gray-100">
-                  {u.name}
-                  {u.isPrivate && <Lock size={12} className="text-gray-400" />}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {u.isPrivate ? 'Private account' : 'Public account'}
-                </p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+  return <div>
+    <div className="mb-5 flex items-center gap-3">
+      <button onClick={() => navigate(-1)} aria-label="Back" className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-500 shadow-card dark:bg-white/5"><ChevronLeft size={18} /></button>
+      <div><h1 className="font-display text-xl font-bold">{title}</h1><p className="text-xs text-gray-400">{state.name}{!state.private && !state.loading ? ` · ${state.users.length}` : ''}</p></div>
     </div>
-  )
+    {state.loading ? <p className="py-8 text-center text-sm text-gray-400">Loading...</p>
+      : state.private ? <EmptyState icon={Lock} title="This account is private" description={`Only approved followers can see this ${title.toLowerCase()} list.`} />
+      : state.users.length === 0 ? <EmptyState icon={Users} title={`No ${title.toLowerCase()} yet`} description="This list is empty right now." />
+      : <div className="space-y-2">{state.users.map((person) => <Link key={person.id} to={`/users/${person.id}`} className="soft-card flex items-center gap-3.5 p-4 hover-lift"><Avatar name={person.name} src={person.avatar_url} size={46} /><div className="min-w-0 flex-1"><p className="flex items-center gap-1.5 text-sm font-semibold">{person.name}{person.is_private && <Lock size={12} className="text-gray-400" />}</p><p className="text-xs text-gray-400">@{person.username}</p></div></Link>)}</div>}
+  </div>
 }

@@ -43,8 +43,12 @@ export function NotificationsProvider({ children }) {
     await request(`/notifications/${id}/read`, { method: 'POST' })
     setItems((previous) => previous.map((item) => item.id === id ? { ...item, read: true } : item))
   }
+  const acceptFollowRequest = async (requestId, notificationId) => {
+    await request(`/users/follow-requests/${requestId}/accept`, { method: 'POST' })
+    setItems((previous) => previous.map((item) => item.id === notificationId ? { ...item, read: true, accepted: true } : item))
+  }
   const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items])
-  return <NotificationsContext.Provider value={{ items, setItems, unreadCount, markAllRead, markRead, refresh }}>{children}</NotificationsContext.Provider>
+  return <NotificationsContext.Provider value={{ items, setItems, unreadCount, markAllRead, markRead, acceptFollowRequest, refresh }}>{children}</NotificationsContext.Provider>
 }
 
 export const useNotifications = () => useContext(NotificationsContext)

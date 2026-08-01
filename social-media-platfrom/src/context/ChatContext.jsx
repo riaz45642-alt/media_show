@@ -1,205 +1,141 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
-import { nextMessageId, findUser } from '../data/messages'
-import { moderateContent } from '../services/moderationService'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useAuth } from './AuthContext'
+import * as chatService from '../services/chatService'
 
 const ChatContext = createContext(null)
 
-export function ChatProvider({ children }) {
-  const [conversations, setConversations] = useState([])
-  // { [conversationId]: true } while the other participant is "typing"
-  const [typing] = useState({})
-  const timers = useRef([])
-
-  const clearLater = (fn, ms) => {
-    const t = setTimeout(fn, ms)
-    timers.current.push(t)
-    return t
+function normalizeMessage(message, currentUserId) {
+  return {
+    id: message.id,
+    senderId: message.sender_id === currentUserId ? 'me' : message.sender_id,
+    type: message.kind || 'text',
+    text: message.body || '',
+    replyTo: message.reply_to_id,
+    mediaUrl: message.media_url || null,
+    time: message.sent_at,
+    status: message.status || 'delivered',
   }
+}
 
-  const getConversation = useCallback(
-    (id) => conversations.find((c) => c.id === id) || null,
-    [conversations]
-  )
-
-  const findOrCreateConversation = useCallback(
-    (userId) => {
-      let convo = conversations.find((c) => c.participantId === userId)
-      if (!convo) {
-        convo = { id: userId, participantId: userId, pinned: false, archived: false, messages: [] }
-        setConversations((prev) => [convo, ...prev])
-      }
-      return convo
+function normalizeConversation(row, currentUserId) {
+  const last = row.last_message_id ? normalizeMessage({
+    id: row.last_message_id, body: row.last_message_body, kind: row.last_message_kind,
+    sender_id: row.last_message_sender_id, sent_at: row.last_message_sent_at,
+  }, currentUserId) : null
+  return {
+    id: row.id,
+    participantId: row.participant_id,
+    participant: {
+      id: row.participant_id,
+      name: row.participant_name || 'Member',
+      username: row.username,
+      avatar: row.avatar_url,
     },
-    [conversations]
-  )
-
-  const touchConversation = (id, updater) => {
-    setConversations((prev) => prev.map((c) => (c.id === id ? updater(c) : c)))
+    pinned: Boolean(row.pinned_at),
+    archived: Boolean(row.archived_at),
+    unread: Number(row.unread_count || 0),
+    messages: last ? [last] : [],
+    messagesLoaded: false,
   }
+}
 
-  const sendMessage = useCallback((conversationId, payload) => {
-    const message = {
-      id: nextMessageId(),
-      senderId: 'me',
-      type: payload.type || 'text',
-      text: payload.text || '',
-      mediaUrl: payload.mediaUrl || null,
-      shared: payload.shared || null,
-      replyTo: payload.replyTo || null,
-      time: new Date().toISOString(),
-      status: 'sending',
-      flagged: false,
-    }
+export function ChatProvider({ children }) {
+  const { user } = useAuth()
+  const [conversations, setConversations] = useState([])
+  const [typing] = useState({})
+  const [loading, setLoading] = useState(false)
 
-    touchConversation(conversationId, (c) => ({ ...c, messages: [...c.messages, message] }))
-
-    // Every outgoing text message is checked against the same hybrid
-    // moderation pipeline used for posts/comments (rule-based + Gemini AI +
-    // risk scoring) before it's marked as actually sent.
-    const textToCheck = message.type === 'text' ? message.text : ''
-    moderateContent({ text: textToCheck, contentType: 'message' }).then((result) => {
-      if (textToCheck && !result.safe) {
-        touchConversation(conversationId, (c) => ({
-          ...c,
-          messages: c.messages.map((m) =>
-            m.id === message.id ? { ...m, status: 'blocked', flagged: true, flagReason: result.textResult?.flags?.[0] } : m
-          ),
-        }))
-        return
-      }
-
-      touchConversation(conversationId, (c) => ({
-        ...c,
-        messages: c.messages.map((m) => (m.id === message.id ? { ...m, status: 'sent' } : m)),
+  const refreshConversations = useCallback(async () => {
+    if (!user?.id) return []
+    setLoading(true)
+    try {
+      const rows = await chatService.listConversations()
+      const normalized = rows.map((row) => normalizeConversation(row, user.id))
+      setConversations((previous) => normalized.map((conversation) => {
+        const existing = previous.find((item) => item.id === conversation.id)
+        return existing?.messagesLoaded ? { ...conversation, messages: existing.messages, messagesLoaded: true } : conversation
       }))
-      clearLater(() => {
-        touchConversation(conversationId, (c) => ({
-          ...c,
-          messages: c.messages.map((m) => (m.id === message.id ? { ...m, status: 'delivered' } : m)),
-        }))
-      }, 500)
+      return normalized
+    } finally { setLoading(false) }
+  }, [user?.id])
 
-    })
+  useEffect(() => {
+    if (user?.id) refreshConversations().catch(() => setConversations([]))
+    else setConversations([])
+  }, [user?.id, refreshConversations])
 
-    return message
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversations])
+  const getConversation = useCallback((id) => conversations.find((item) => item.id === id) || null, [conversations])
+  const findUser = useCallback((id) => conversations.find((item) => item.participantId === id)?.participant || null, [conversations])
 
-  const deleteMessage = useCallback((conversationId, messageId) => {
-    touchConversation(conversationId, (c) => ({
-      ...c,
-      messages: c.messages.filter((m) => m.id !== messageId),
-    }))
-  }, [])
+  const findOrCreateConversation = useCallback(async (userId) => {
+    const existing = conversations.find((item) => item.participantId === userId)
+    if (existing) return existing
+    const data = await chatService.openConversation(userId)
+    await refreshConversations()
+    return { id: data.conversation.id, participantId: userId, messages: [], messagesLoaded: false }
+  }, [conversations, refreshConversations])
 
-  const deleteConversation = useCallback((conversationId) => {
-    setConversations((prev) => prev.filter((c) => c.id !== conversationId))
-  }, [])
+  const loadConversationMessages = useCallback(async (conversationId, { force = false } = {}) => {
+    const existing = conversations.find((item) => item.id === conversationId)
+    if (existing?.messagesLoaded && !force) return existing.messages
+    const rows = await chatService.listMessages(conversationId)
+    const messages = rows.map((row) => normalizeMessage(row, user?.id))
+    setConversations((previous) => previous.map((item) => item.id === conversationId
+      ? { ...item, messages, messagesLoaded: true, unread: 0 }
+      : item))
+    return messages
+  }, [conversations, user?.id])
 
-  const togglePin = useCallback((conversationId) => {
-    touchConversation(conversationId, (c) => ({ ...c, pinned: !c.pinned }))
-  }, [])
-
-  const toggleArchive = useCallback((conversationId) => {
-    touchConversation(conversationId, (c) => ({ ...c, archived: !c.archived }))
-  }, [])
+  const sendMessage = useCallback(async (conversationId, payload) => {
+    if (payload.type === 'image' || payload.type === 'video') {
+      const local = { id: `local-${Date.now()}`, senderId: 'me', type: payload.type, mediaUrl: payload.mediaUrl, time: new Date().toISOString(), status: 'sent' }
+      setConversations((previous) => previous.map((item) => item.id === conversationId ? { ...item, messages: [...item.messages, local] } : item))
+      return local
+    }
+    const optimisticId = `sending-${Date.now()}`
+    const optimistic = { id: optimisticId, senderId: 'me', type: payload.type || 'text', text: payload.text, time: new Date().toISOString(), status: 'sending' }
+    setConversations((previous) => previous.map((item) => item.id === conversationId ? { ...item, messages: [...item.messages, optimistic], messagesLoaded: true } : item))
+    try {
+      const created = await chatService.sendMessage(conversationId, { text: payload.text, replyToId: payload.replyTo })
+      const normalized = normalizeMessage(created, user?.id)
+      setConversations((previous) => previous.map((item) => item.id === conversationId
+        ? { ...item, messages: item.messages.map((message) => message.id === optimisticId ? normalized : message) }
+        : item))
+      return normalized
+    } catch (error) {
+      setConversations((previous) => previous.map((item) => item.id === conversationId
+        ? { ...item, messages: item.messages.map((message) => message.id === optimisticId ? { ...message, status: 'blocked', flagged: true, flagReason: error.message } : message) }
+        : item))
+      throw error
+    }
+  }, [user?.id])
 
   const markAsRead = useCallback((conversationId) => {
-    touchConversation(conversationId, (c) => ({
-      ...c,
-      messages: c.messages.map((m) => (m.senderId !== 'me' ? { ...m, status: 'seen' } : m)),
-    }))
+    setConversations((previous) => previous.map((item) => item.id === conversationId ? { ...item, unread: 0 } : item))
+    chatService.markRead(conversationId).catch(() => {})
   }, [])
 
-  // Shares one piece of content (post/reel/video/story/profile/link) with one
-  // or more recipients, creating conversations as needed. Returns the ids of
-  // the conversations that were messaged, so the UI can confirm + deep-link.
-  const shareContent = useCallback((recipientIds, shared) => {
-    const touchedIds = []
-    setConversations((prev) => {
-      let next = [...prev]
-      recipientIds.forEach((userId) => {
-        let convo = next.find((c) => c.participantId === userId)
-        const message = {
-          id: nextMessageId(),
-          senderId: 'me',
-          type: 'shared',
-          shared,
-          text: '',
-          time: new Date().toISOString(),
-          status: 'sent',
-        }
-        if (!convo) {
-          convo = { id: userId, participantId: userId, pinned: false, archived: false, messages: [message] }
-          next = [convo, ...next]
-        } else {
-          next = next.map((c) => (c.id === convo.id ? { ...c, messages: [...c.messages, message] } : c))
-        }
-        touchedIds.push(convo.id)
-      })
-      return next
-    })
-    return touchedIds
-  }, [])
+  const touch = useCallback((conversationId, update) => setConversations((previous) => previous.map((item) => item.id === conversationId ? update(item) : item)), [])
+  const deleteMessage = useCallback((conversationId, messageId) => touch(conversationId, (item) => ({ ...item, messages: item.messages.filter((message) => message.id !== messageId) })), [touch])
+  const deleteConversation = useCallback((conversationId) => setConversations((previous) => previous.filter((item) => item.id !== conversationId)), [])
+  const togglePin = useCallback((conversationId) => touch(conversationId, (item) => ({ ...item, pinned: !item.pinned })), [touch])
+  const toggleArchive = useCallback((conversationId) => touch(conversationId, (item) => ({ ...item, archived: !item.archived })), [touch])
 
-  // Forwards an existing message (text/image/video/shared) to one or more
-  // recipients, preserving its content but marking it as forwarded.
-  const forwardMessage = useCallback((message, recipientIds) => {
-    const touchedIds = []
-    setConversations((prev) => {
-      let next = [...prev]
-      recipientIds.forEach((userId) => {
-        let convo = next.find((c) => c.participantId === userId)
-        const newMessage = {
-          id: nextMessageId(),
-          senderId: 'me',
-          type: message.type,
-          text: message.text || '',
-          mediaUrl: message.mediaUrl || null,
-          shared: message.shared || null,
-          forwarded: true,
-          time: new Date().toISOString(),
-          status: 'sent',
-        }
-        if (!convo) {
-          convo = { id: userId, participantId: userId, pinned: false, archived: false, messages: [newMessage] }
-          next = [convo, ...next]
-        } else {
-          next = next.map((c) => (c.id === convo.id ? { ...c, messages: [...c.messages, newMessage] } : c))
-        }
-        touchedIds.push(convo.id)
-      })
-      return next
-    })
-    return touchedIds
-  }, [])
+  const shareContent = useCallback(async (recipientIds, shared) => Promise.all(recipientIds.map(async (recipientId) => {
+    const conversation = await findOrCreateConversation(recipientId)
+    await sendMessage(conversation.id, { type: 'text', text: `Shared ${shared.kind || 'post'}: ${shared.title || shared.id}` })
+    return conversation.id
+  })), [findOrCreateConversation, sendMessage])
+  const forwardMessage = useCallback((message, recipientIds) => shareContent(recipientIds, { kind: 'message', title: message.text || 'Forwarded message' }), [shareContent])
 
-  const unreadCount = useMemo(
-    () =>
-      conversations
-        .filter((c) => !c.archived)
-        .reduce((sum, c) => sum + c.messages.filter((m) => m.senderId !== 'me' && m.status !== 'seen').length, 0),
-    [conversations]
-  )
+  const unreadCount = useMemo(() => conversations.filter((item) => !item.archived).reduce((sum, item) => sum + item.unread, 0), [conversations])
 
-  const value = {
-    conversations,
-    typing,
-    unreadCount,
-    getConversation,
-    findOrCreateConversation,
-    sendMessage,
-    deleteMessage,
-    deleteConversation,
-    togglePin,
-    toggleArchive,
-    markAsRead,
-    shareContent,
-    forwardMessage,
-    findUser,
-  }
-
-  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
+  return <ChatContext.Provider value={{
+    conversations, typing, loading, unreadCount, getConversation, findUser,
+    findOrCreateConversation, loadConversationMessages, refreshConversations,
+    sendMessage, deleteMessage, deleteConversation, togglePin, toggleArchive,
+    markAsRead, shareContent, forwardMessage,
+  }}>{children}</ChatContext.Provider>
 }
 
 export const useChat = () => useContext(ChatContext)

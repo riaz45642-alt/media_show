@@ -41,9 +41,10 @@ async function request(path, options = {}) {
 }
 
 function storeSession({ user, token }) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+  const normalizedUser = { ...user, isPrivate: user.isPrivate ?? user.is_private ?? false }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedUser))
   if (token) localStorage.setItem(TOKEN_KEY, token)
-  return user
+  return normalizedUser
 }
 
 export async function signup(userData) {
@@ -80,6 +81,11 @@ export async function continueWithGoogle() {
   }
   if (!googleProvider) throw new Error('Google sign-in could not be initialized.')
   return storeSession(await googleProvider.signIn())
+}
+
+export async function updateProfile(patch) {
+  const data = await request('/users/me', { method: 'PUT', body: JSON.stringify(patch) })
+  return updateStoredUser({ ...data.user, isPrivate: data.user?.is_private ?? patch.isPrivate })
 }
 
 export function logout() {

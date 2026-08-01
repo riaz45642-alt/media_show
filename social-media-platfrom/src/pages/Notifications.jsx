@@ -16,6 +16,8 @@ const ICONS = {
   reminder: { icon: Clock, color: 'text-gray-500 bg-gray-100' },
   mention: { icon: AtSign, color: 'text-primary bg-primary/10' },
   follower: { icon: UserPlus, color: 'text-secondary-dark bg-secondary/10' },
+  follow: { icon: UserPlus, color: 'text-secondary-dark bg-secondary/10' },
+  friend_request: { icon: UserPlus, color: 'text-secondary-dark bg-secondary/10' },
   message: { icon: Mail, color: 'text-primary bg-primary/10' },
   moderation: { icon: Gavel, color: 'text-amber-600 bg-amber-50' },
   appeal: { icon: Scale, color: 'text-primary bg-primary/10' },
@@ -27,7 +29,7 @@ const DEFAULT_PREFS = Object.fromEntries(NOTIFICATION_CATEGORIES.filter((c) => c
 const PREFS_KEY = 'mediashow_notification_prefs'
 
 export default function Notifications() {
-  const { items, unreadCount, markAllRead, markRead } = useNotifications()
+  const { items, unreadCount, markAllRead, markRead, acceptFollowRequest } = useNotifications()
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [showPrefs, setShowPrefs] = useState(false)
@@ -132,9 +134,8 @@ export default function Notifications() {
           {filtered.map((n) => {
             const { icon: Icon, color } = ICONS[n.type] || ICONS.system
             return (
-              <button
+              <div
                 key={n.id}
-                onClick={() => markRead(n.id)}
                 className={`soft-card flex w-full items-center gap-3.5 p-4 text-left animate-slideUp ${!n.read ? 'ring-2 ring-primary/15' : ''}`}
               >
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${color}`}>
@@ -143,9 +144,12 @@ export default function Notifications() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-700 dark:text-gray-200">{n.text}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{n.time}</p>
+                  {n.kind === 'friend_request' && n.entity_type === 'follow_request' && !n.accepted && (
+                    <button onClick={() => acceptFollowRequest(n.entity_id, n.id)} className="mt-2 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white">Accept</button>
+                  )}
                 </div>
-                {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
-              </button>
+                {!n.read && <button aria-label="Mark read" onClick={() => markRead(n.id)} className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
+              </div>
             )
           })}
         </div>

@@ -9,9 +9,9 @@ import { useChat } from '../../context/ChatContext'
 import CallButtons from '../calls/CallButtons'
 
 export default function ConversationView({ conversation, onBack }) {
-  const { sendMessage, deleteMessage, deleteConversation, togglePin, toggleArchive, markAsRead, forwardMessage, typing, findUser } =
+  const { sendMessage, deleteMessage, deleteConversation, togglePin, toggleArchive, markAsRead, forwardMessage, typing, findUser, loadConversationMessages } =
     useChat()
-  const user = findUser(conversation.participantId)
+  const user = conversation.participant || findUser(conversation.participantId)
   const [replyTo, setReplyTo] = useState(null)
   const [forwardTarget, setForwardTarget] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -19,6 +19,7 @@ export default function ConversationView({ conversation, onBack }) {
   const isTyping = !!typing[conversation.id]
 
   useEffect(() => {
+    loadConversationMessages(conversation.id).catch(() => {})
     markAsRead(conversation.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation.id])
@@ -28,7 +29,7 @@ export default function ConversationView({ conversation, onBack }) {
   }, [conversation.messages.length, isTyping])
 
   const handleSend = (payload) => {
-    sendMessage(conversation.id, payload)
+    sendMessage(conversation.id, payload).catch(() => {})
     setReplyTo(null)
   }
 

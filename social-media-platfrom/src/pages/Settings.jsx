@@ -6,6 +6,7 @@ import LanguageSwitcher from '../components/common/LanguageSwitcher'
 import { useTheme } from '../context/ThemeContext'
 import { useLanguage } from '../context/LanguageContext'
 import { useAuth } from '../context/AuthContext'
+import * as authService from '../services/authService'
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme()
@@ -17,6 +18,11 @@ export default function Settings() {
   const [shield, setShield] = useState(true)
 
   const isPrivate = user?.isPrivate ?? false
+
+  const updatePrivacy = async (isPublic) => {
+    const updated = await authService.updateProfile({ isPrivate: !isPublic })
+    updateUser(updated)
+  }
 
   const rows = [
     { icon: Moon, label: 'Dark Mode', description: 'Easier on the eyes at night', checked: theme === 'dark', onChange: toggleTheme },
@@ -31,7 +37,7 @@ export default function Settings() {
         ? 'Off — only approved followers can see your posts & followers/following'
         : 'On — anyone can view your profile, posts & followers/following',
       checked: !isPrivate,
-      onChange: (checked) => updateUser({ isPrivate: !checked }),
+      onChange: updatePrivacy,
     },
   ]
 

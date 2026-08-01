@@ -19,6 +19,7 @@ import groupRoutes from './routes/groupRoutes.js'
 import groupMessageRoutes from './routes/groupMessageRoutes.js'
 import callRoutes from './routes/callRoutes.js'
 import presenceRoutes from './routes/presenceRoutes.js'
+import chatRoutes from './routes/chatRoutes.js'
 import { initSocket } from './sockets/index.js'
 import { checkDatabase } from './config/db.js'
 import { corsOriginCallback } from './config/cors.js'
@@ -93,6 +94,7 @@ app.use('/api/groups', groupRoutes)
 app.use('/api/groups', groupMessageRoutes)
 app.use('/api/calls', callRoutes)
 app.use('/api/presence', presenceRoutes)
+app.use('/api/chat', chatRoutes)
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not found' })

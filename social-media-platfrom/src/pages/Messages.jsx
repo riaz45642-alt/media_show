@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { MessageCircle, ShieldCheck, Search, Archive, ChevronDown, ChevronUp } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
@@ -6,14 +6,36 @@ import EmptyState from '../components/common/EmptyState'
 import ChatListItem from '../components/chat/ChatListItem'
 import ConversationView from '../components/messages/ConversationView'
 import { useChat } from '../context/ChatContext'
-import { findUser } from '../data/messages'
+import useDebouncedValue from '../hooks/useDebouncedValue'
+import * as chatService from '../services/chatService'
+import Avatar from '../components/ui/Avatar'
 
 export default function Messages() {
-  const { conversations, togglePin, toggleArchive, deleteConversation } = useChat()
+  const { conversations, togglePin, toggleArchive, deleteConversation, findOrCreateConversation } = useChat()
   const navigate = useNavigate()
   const { id: activeId } = useParams()
   const [query, setQuery] = useState('')
   const [showArchived, setShowArchived] = useState(false)
+  const [people, setPeople] = useState([])
+  const [searching, setSearching] = useState(false)
+  const debouncedQuery = useDebouncedValue(query, 200)
+
+  useEffect(() => {
+    if (!debouncedQuery.trim()) { setPeople([]); return }
+    let active = true
+    setSearching(true)
+    chatService.searchUsers(debouncedQuery.trim())
+      .then((rows) => active && setPeople(rows))
+      .catch(() => active && setPeople([]))
+      .finally(() => active && setSearching(false))
+    return () => { active = false }
+  }, [debouncedQuery])
+
+  const openUser = async (person) => {
+    if (!person.can_message) return
+    const conversation = await findOrCreateConversation(person.id)
+    navigate(`/messages/${conversation.id}`)
+  }
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeId) || null,
@@ -27,8 +49,7 @@ export default function Messages() {
   const q = query.trim().toLowerCase()
   const matches = (c) => {
     if (!q) return true
-    const user = findUser(c.participantId)
-    return user?.name?.toLowerCase().includes(q)
+    return c.participant?.name?.toLowerCase().includes(q) || c.participant?.username?.toLowerCase().includes(q)
   }
 
   const visible = conversations.filter((c) => !c.archived && matches(c))
@@ -43,10 +64,10 @@ export default function Messages() {
       return tb.localeCompare(ta)
     })
 
-  const unreadFor = (c) => c.messages.filter((m) => m.senderId !== 'me' && m.status !== 'seen').length
+  const unreadFor = (c) => c.unread ?? c.messages.filter((m) => m.senderId !== 'me' && m.status !== 'seen').length
 
   const renderItem = (c) => {
-    const user = findUser(c.participantId)
+    const user = c.participant
     return (
       <ChatListItem
         key={c.id}
@@ -79,6 +100,21 @@ export default function Messages() {
           className="focus-ring w-full rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 py-2.5 pl-9 pr-3 text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400 outline-none"
         />
       </div>
+
+      {query.trim() && (
+        <div className="mb-5 space-y-1 rounded-2xl border border-gray-100 bg-white p-2 shadow-card dark:border-white/10 dark:bg-white/5">
+          {searching && <p className="p-3 text-center text-xs text-gray-400">Searching people...</p>}
+          {!searching && people.map((person) => (
+            <button key={person.id} onClick={() => openUser(person)} disabled={!person.can_message}
+              className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/5">
+              <Avatar name={person.name} src={person.avatar_url} size={38} />
+              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{person.name}</span><span className="block truncate text-xs text-gray-400">@{person.username}{person.is_following ? ' · Following' : ''}</span></span>
+              {!person.can_message && <span className="text-[10px] text-gray-400">Private</span>}
+            </button>
+          ))}
+          {!searching && people.length === 0 && <p className="p-3 text-center text-xs text-gray-400">No users found.</p>}
+        </div>
+      )}
 
       {conversations.length === 0 ? (
         <EmptyState icon={MessageCircle} title="No conversations yet" description="Start chatting with friends safely." />

@@ -118,13 +118,15 @@ export default function StoryViewerModal({ entries, activeId, onClose }) {
 
   if (!open || !entry || !story) return null
 
-  const handleSendReply = () => {
+  const handleSendReply = async () => {
     if (!reply.trim() || entry.id === 'me') return
-    const convo = findOrCreateConversation(entry.id)
-    sendMessage(convo.id, { text: `Replied to your story: ${reply.trim()}` })
-    setReply('')
-    setSent(true)
-    setTimeout(() => setSent(false), 1500)
+    try {
+      const convo = await findOrCreateConversation(entry.id)
+      await sendMessage(convo.id, { text: `Replied to your story: ${reply.trim()}` })
+      setReply('')
+      setSent(true)
+      setTimeout(() => setSent(false), 1500)
+    } catch { /* privacy or network errors leave the reply intact */ }
   }
 
   return (

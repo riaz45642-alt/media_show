@@ -42,6 +42,10 @@ export function validateBody(rules) {
         errors.push(`${field} must be an array`)
         continue
       }
+      if (rule.type === 'boolean' && typeof value !== 'boolean') {
+        errors.push(`${field} must be a boolean`)
+        continue
+      }
 
       if (rule.type === 'string') {
         const trimmed = value.trim()

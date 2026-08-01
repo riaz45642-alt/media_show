@@ -1,6 +1,7 @@
 import { pool } from '../config/db.js'
 import { moderate } from '../services/moderationService.js'
 import { validateDisplayName } from '../services/ruleBasedFilter.js'
+import { createNotification } from '../services/notificationService.js'
 
 function clamp(n) {
   return Math.max(0, Math.min(100, Math.round(n)))
@@ -11,12 +12,15 @@ export async function searchUsers(req, res, next) {
     const search = String(req.query.search || '').trim()
     const limit = Math.min(30, Math.max(1, Number(req.query.limit) || 20))
     const { rows } = await pool.query(
-      `SELECT u.id, p.display_name AS name, p.username
+      `SELECT u.id, p.display_name AS name, p.username, avatar.storage_path AS avatar_url,
+              EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = $1 AND f.followed_id = u.id) AS is_following
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
+       LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
        WHERE u.id <> $1 AND u.status = 'active' AND u.deleted_at IS NULL
          AND ($2 = '' OR p.display_name ILIKE '%' || $2 || '%' OR p.username ILIKE '%' || $2 || '%')
-       ORDER BY CASE WHEN $2 <> '' AND p.display_name ILIKE $2 || '%' THEN 0 ELSE 1 END,
+       ORDER BY is_following DESC,
+                CASE WHEN lower(p.username) = lower($2) THEN 0 WHEN p.username ILIKE $2 || '%' THEN 1 WHEN p.display_name ILIKE $2 || '%' THEN 2 ELSE 3 END,
                 p.display_name
        LIMIT $3`,
       [req.user.id, search, limit]
@@ -31,17 +35,29 @@ export async function getUserProfile(req, res, next) {
   try {
     const { rows } = await pool.query(
       `SELECT u.id, p.display_name AS name, p.username, p.bio, p.age_group,
+              avatar.storage_path AS avatar_url,
+              (s.profile_visibility <> 'public') AS is_private,
+              EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = $2 AND f.followed_id = u.id) AS is_following,
+              EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = u.id AND f.followed_id = $2) AS follows_viewer,
+              EXISTS (SELECT 1 FROM friend_requests fr WHERE fr.sender_id = $2 AND fr.recipient_id = u.id AND fr.status = 'pending') AS follow_pending,
+              ($2 = u.id OR s.profile_visibility = 'public' OR EXISTS
+                (SELECT 1 FROM follows f WHERE f.follower_id = $2 AND f.followed_id = u.id)) AS can_view_posts,
+              ($2 <> u.id AND (s.profile_visibility = 'public' OR EXISTS
+                (SELECT 1 FROM follows f WHERE f.follower_id = $2 AND f.followed_id = u.id))) AS can_message,
               count(DISTINCT f1.follower_id)::int AS follower_count,
               count(DISTINCT f2.followed_id)::int AS following_count,
               count(DISTINCT po.id)::int AS post_count
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
+       JOIN user_settings s ON s.user_id = u.id
+       LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
        LEFT JOIN follows f1 ON f1.followed_id = u.id
        LEFT JOIN follows f2 ON f2.follower_id = u.id
        LEFT JOIN posts po ON po.author_id = u.id AND po.deleted_at IS NULL AND po.moderation_status = 'safe'
        WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL
-       GROUP BY u.id, p.display_name, p.username, p.bio, p.age_group`,
-      [req.params.id]
+       GROUP BY u.id, p.display_name, p.username, p.bio, p.age_group, avatar.storage_path,
+                s.profile_visibility`,
+      [req.params.id, req.user.id]
     )
     if (!rows[0]) return res.status(404).json({ message: 'User not found' })
     res.json(rows[0])
@@ -50,12 +66,174 @@ export async function getUserProfile(req, res, next) {
   }
 }
 
+export async function getUserPosts(req, res, next) {
+  try {
+    const limit = Math.min(30, Math.max(1, Number(req.query.limit) || 12))
+    const cursor = req.query.cursor || null
+    const access = await pool.query(
+      `SELECT s.profile_visibility,
+              EXISTS (SELECT 1 FROM follows WHERE follower_id = $2 AND followed_id = $1) AS follows_target,
+              EXISTS (SELECT 1 FROM follows WHERE follower_id = $1 AND followed_id = $2) AS target_follows
+       FROM users u JOIN user_settings s ON s.user_id = u.id
+       WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL`,
+      [req.params.id, req.user.id]
+    )
+    if (!access.rows[0]) return res.status(404).json({ message: 'User not found' })
+    const relation = access.rows[0]
+    const own = req.params.id === req.user.id
+    if (!own && relation.profile_visibility !== 'public' && !relation.follows_target) {
+      return res.status(403).json({ message: 'This account is private.' })
+    }
+    const allowedVisibilities = own
+      ? ['public', 'followers', 'friends', 'private']
+      : relation.follows_target && relation.target_follows
+        ? ['public', 'followers', 'friends']
+        : relation.follows_target ? ['public', 'followers'] : ['public']
+    const { rows } = await pool.query(
+      `SELECT p.*, p.author_id AS user_id, p.body AS text_content,
+              up.display_name AS author, up.username, avatar.storage_path AS avatar_url,
+              media.items AS media, media.image_url, media.video_url,
+              comments.items AS comments,
+              EXISTS (SELECT 1 FROM reactions r WHERE r.post_id = p.id AND r.user_id = $2) AS liked_by_me,
+              EXISTS (SELECT 1 FROM saved_collection_posts scp JOIN saved_collections sc ON sc.id = scp.collection_id
+                      WHERE scp.post_id = p.id AND sc.owner_id = $2) AS saved_by_me
+       FROM posts p
+       JOIN user_profiles up ON up.user_id = p.author_id
+       LEFT JOIN media_assets avatar ON avatar.id = up.avatar_media_id AND avatar.deleted_at IS NULL
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                  'id', ma.id, 'type', ma.kind, 'url', ma.storage_path,
+                  'mimeType', ma.mime_type, 'position', pm.position
+                ) ORDER BY pm.position), '[]'::jsonb) AS items,
+                min(ma.storage_path) FILTER (WHERE ma.kind = 'image') AS image_url,
+                min(ma.storage_path) FILTER (WHERE ma.kind = 'video') AS video_url
+         FROM post_media pm JOIN media_assets ma ON ma.id = pm.media_id AND ma.deleted_at IS NULL
+         WHERE pm.post_id = p.id
+       ) media ON true
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                  'id', c.id, 'text_content', c.body, 'author', cup.display_name,
+                  'user_id', c.author_id, 'created_at', c.created_at,
+                  'avatar_url', ca.storage_path
+                ) ORDER BY c.created_at), '[]'::jsonb) AS items
+         FROM comments c JOIN user_profiles cup ON cup.user_id = c.author_id
+         LEFT JOIN media_assets ca ON ca.id = cup.avatar_media_id AND ca.deleted_at IS NULL
+         WHERE c.post_id = p.id AND c.deleted_at IS NULL AND c.moderation_status = 'safe'
+       ) comments ON true
+       WHERE p.author_id = $1 AND p.deleted_at IS NULL AND p.moderation_status = 'safe'
+         AND p.visibility = ANY($3::visibility[])
+         AND ($4::timestamptz IS NULL OR COALESCE(p.published_at, p.created_at) < $4)
+       ORDER BY COALESCE(p.published_at, p.created_at) DESC, p.id DESC
+       LIMIT $5`,
+      [req.params.id, req.user.id, allowedVisibilities, cursor, limit + 1]
+    )
+    const hasMore = rows.length > limit
+    const posts = rows.slice(0, limit)
+    const last = posts[posts.length - 1]
+    res.json({ posts, hasMore, nextCursor: hasMore ? (last.published_at || last.created_at) : null })
+  } catch (error) { next(error) }
+}
+
+export async function toggleFollow(req, res, next) {
+  try {
+    if (req.params.id === req.user.id) return res.status(400).json({ message: 'You cannot follow yourself' })
+    const target = await pool.query(
+      `SELECT u.id, s.profile_visibility FROM users u JOIN user_settings s ON s.user_id = u.id
+       WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL`, [req.params.id]
+    )
+    if (!target.rows[0]) return res.status(404).json({ message: 'User not found' })
+    const removed = await pool.query(
+      `DELETE FROM follows WHERE follower_id = $1 AND followed_id = $2 RETURNING followed_id`,
+      [req.user.id, req.params.id]
+    )
+    if (removed.rowCount) return res.json({ status: 'none', following: false })
+    if (target.rows[0].profile_visibility !== 'public') {
+      const request = await pool.query(
+        `INSERT INTO friend_requests (sender_id, recipient_id, status) VALUES ($1,$2,'pending')
+         ON CONFLICT (LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)) WHERE status = 'pending'
+         DO UPDATE SET created_at = friend_requests.created_at RETURNING id`,
+        [req.user.id, req.params.id]
+      )
+      await createNotification({
+        userId: req.params.id, actorId: req.user.id, category: 'followers', type: 'friend_request',
+        text: 'You have a new follow request', link: '/notifications', entityType: 'follow_request', entityId: request.rows[0].id,
+      })
+      return res.status(202).json({ status: 'pending', following: false })
+    }
+    await pool.query(`INSERT INTO follows (follower_id, followed_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [req.user.id, req.params.id])
+    await createNotification({
+      userId: req.params.id, actorId: req.user.id, category: 'followers', type: 'follow',
+      text: 'Someone started following you', link: `/users/${req.user.id}`, entityType: 'user', entityId: req.user.id,
+    })
+    res.json({ status: 'accepted', following: true })
+  } catch (error) { next(error) }
+}
+
+export async function acceptFollowRequest(req, res, next) {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const request = await client.query(
+      `UPDATE friend_requests SET status = 'accepted', responded_at = now()
+       WHERE id = $1 AND recipient_id = $2 AND status = 'pending' RETURNING sender_id`,
+      [req.params.requestId, req.user.id]
+    )
+    if (!request.rows[0]) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ message: 'Follow request not found' })
+    }
+    await client.query(`INSERT INTO follows (follower_id, followed_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [request.rows[0].sender_id, req.user.id])
+    await client.query('COMMIT')
+    await createNotification({
+      userId: request.rows[0].sender_id, actorId: req.user.id, category: 'followers', type: 'follow',
+      text: 'Your follow request was accepted', link: `/users/${req.user.id}`, entityType: 'user', entityId: req.user.id,
+    })
+    res.json({ status: 'accepted' })
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {})
+    next(error)
+  } finally { client.release() }
+}
+
+export async function listConnections(req, res, next) {
+  try {
+    const targetId = req.params.id === 'me' ? req.user.id : req.params.id
+    const type = req.query.type === 'following' ? 'following' : 'followers'
+    const access = await pool.query(
+      `SELECT p.display_name AS name, s.profile_visibility,
+              ($1 = $2 OR s.profile_visibility = 'public' OR EXISTS
+                (SELECT 1 FROM follows WHERE follower_id = $2 AND followed_id = $1)) AS can_view
+       FROM users u JOIN user_profiles p ON p.user_id = u.id JOIN user_settings s ON s.user_id = u.id
+       WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL`,
+      [targetId, req.user.id]
+    )
+    if (!access.rows[0]) return res.status(404).json({ message: 'User not found' })
+    if (!access.rows[0].can_view) return res.status(403).json({ message: 'This account is private.' })
+    const join = type === 'followers'
+      ? 'JOIN user_profiles p ON p.user_id = f.follower_id JOIN users u ON u.id = f.follower_id JOIN user_settings s ON s.user_id = f.follower_id'
+      : 'JOIN user_profiles p ON p.user_id = f.followed_id JOIN users u ON u.id = f.followed_id JOIN user_settings s ON s.user_id = f.followed_id'
+    const condition = type === 'followers' ? 'f.followed_id = $1' : 'f.follower_id = $1'
+    const idColumn = type === 'followers' ? 'f.follower_id' : 'f.followed_id'
+    const { rows } = await pool.query(
+      `SELECT ${idColumn} AS id, p.display_name AS name, p.username,
+              avatar.storage_path AS avatar_url, (s.profile_visibility <> 'public') AS is_private
+       FROM follows f ${join}
+       LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
+       WHERE ${condition} AND u.status = 'active' AND u.deleted_at IS NULL
+       ORDER BY f.created_at DESC LIMIT 100`,
+      [targetId]
+    )
+    res.json({ name: access.rows[0].name, users: rows })
+  } catch (error) { next(error) }
+}
+
 export async function getMe(req, res, next) {
   try {
     const { rows } = await pool.query(
       `SELECT u.id, p.display_name AS name, u.email, p.date_of_birth, p.age_group,
-              p.username, p.bio, p.safe_zone_score, u.role, u.status
-       FROM users u JOIN user_profiles p ON p.user_id = u.id
+              p.username, p.bio, p.safe_zone_score, u.role, u.status,
+              (s.profile_visibility <> 'public') AS is_private
+       FROM users u JOIN user_profiles p ON p.user_id = u.id JOIN user_settings s ON s.user_id = u.id
        WHERE u.id = $1`,
       [req.user.id]
     )
@@ -67,7 +245,7 @@ export async function getMe(req, res, next) {
 
 export async function updateMe(req, res, next) {
   try {
-    const { name, bio } = req.body
+    const { name, bio, isPrivate } = req.body
 
     if (name) {
       const check = validateDisplayName(name)
@@ -91,6 +269,13 @@ export async function updateMe(req, res, next) {
        RETURNING user_id AS id, display_name AS name, username, date_of_birth, age_group, bio`,
       [name, bio, req.user.id]
     )
+    if (typeof isPrivate === 'boolean') {
+      await pool.query(
+        `UPDATE user_settings SET profile_visibility = $1::visibility, updated_at = now() WHERE user_id = $2`,
+        [isPrivate ? 'private' : 'public', req.user.id]
+      )
+    }
+    if (rows[0]) rows[0].is_private = typeof isPrivate === 'boolean' ? isPrivate : undefined
     res.json({ user: rows[0], moderation })
   } catch (err) {
     next(err)
