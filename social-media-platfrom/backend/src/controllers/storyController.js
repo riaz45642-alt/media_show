@@ -19,29 +19,69 @@ export async function listStories(req, res, next) {
       `SELECT s.id, s.author_id, s.caption, s.created_at, s.expires_at,
               up.display_name AS author_name, up.username, avatar.storage_path AS author_avatar,
               ma.kind AS media_type, ma.storage_path AS media_url,
+              (COALESCE(settings.profile_visibility, 'public'::visibility) <> 'public') AS is_private,
+              EXISTS (SELECT 1 FROM follows vf WHERE vf.follower_id = $1::uuid AND vf.followed_id = s.author_id) AS viewer_follows,
               EXISTS (SELECT 1 FROM story_views sv WHERE sv.story_id = s.id AND sv.viewer_id = $1::uuid) AS viewed,
               EXISTS (SELECT 1 FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1::uuid) AS liked_by_me,
               (SELECT count(*)::int FROM story_reactions sr WHERE sr.story_id = s.id) AS like_count
        FROM stories s
+       JOIN users author ON author.id = s.author_id AND author.deleted_at IS NULL AND author.status = 'active'
        JOIN user_profiles up ON up.user_id = s.author_id
+       LEFT JOIN user_settings settings ON settings.user_id = s.author_id
        JOIN story_media sm ON sm.story_id = s.id
        JOIN media_assets ma ON ma.id = sm.media_id AND ma.deleted_at IS NULL
        LEFT JOIN media_assets avatar ON avatar.id = up.avatar_media_id AND avatar.deleted_at IS NULL
        WHERE s.deleted_at IS NULL AND s.expires_at > now() AND s.moderation_status = 'safe'
-         AND (s.author_id = $1::uuid OR s.visibility = 'public' OR
-              (s.visibility IN ('followers','friends') AND EXISTS
-                (SELECT 1 FROM follows f WHERE f.follower_id = $1::uuid AND f.followed_id = s.author_id)))
+         AND NOT EXISTS (
+           SELECT 1 FROM user_blocks b
+           WHERE (b.blocker_id = $1::uuid AND b.blocked_id = s.author_id)
+              OR (b.blocker_id = s.author_id AND b.blocked_id = $1::uuid)
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM user_mutes mute
+           WHERE mute.muter_id = $1::uuid AND mute.muted_id = s.author_id
+             AND (mute.expires_at IS NULL OR mute.expires_at > now())
+         )
+         AND (
+           s.author_id = $1::uuid
+           OR (
+             s.visibility <> 'private'
+             AND (
+               COALESCE(settings.profile_visibility, 'public'::visibility) = 'public'
+               OR EXISTS (
+                 SELECT 1 FROM follows f
+                 WHERE f.follower_id = $1::uuid AND f.followed_id = s.author_id
+               )
+             )
+           )
+         )
        ORDER BY s.created_at ASC, sm.position ASC`, [req.user.id]
     )
+    logStage(req, 'story_feed_query_completed', {
+      storyCount: rows.length,
+      authors: [...new Set(rows.map((row) => row.author_id))],
+      publicStoryCount: rows.filter((row) => !row.is_private).length,
+      followedAuthorStoryCount: rows.filter((row) => row.viewer_follows).length,
+    })
     res.json(rows)
-  } catch (error) { next(error) }
+  } catch (error) {
+    logFailure(req, 'story_feed_query_failed', error)
+    next(error)
+  }
 }
 
 export async function createStory(req, res, next) {
   const file = req.file
   if (!file) return res.status(400).json({ message: 'Story image or video is required.' })
   const caption = String(req.body.caption || '').trim().slice(0, 1000)
-  const visibility = ['public', 'followers', 'friends', 'private'].includes(req.body.visibility) ? req.body.visibility : 'followers'
+  let visibility = ['public', 'followers', 'friends', 'private'].includes(req.body.visibility) ? req.body.visibility : null
+  if (!visibility) {
+    const { rows: settings } = await pool.query(
+      `SELECT COALESCE(profile_visibility, 'public'::visibility) AS profile_visibility
+       FROM user_settings WHERE user_id = $1::uuid`, [req.user.id]
+    )
+    visibility = (settings[0]?.profile_visibility || 'public') === 'public' ? 'public' : 'followers'
+  }
   logStage(req, 'story_moderation_started', { mimeType: file.mimetype, byteSize: file.size })
   const [decisions, captionDecision] = await Promise.all([moderateUploadedMedia([file]), moderate({ text: caption, userId: req.user.id, contentType: 'story' })]).catch(async (error) => {
     await fs.unlink(file.path).catch(() => {})
