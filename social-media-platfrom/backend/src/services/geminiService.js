@@ -86,10 +86,13 @@ export const MEDIA_MODERATION_CATEGORIES = Object.freeze([
   'racist_content', 'terrorist_imagery', 'criminal_activity', 'human_trafficking',
   'child_abuse', 'child_exploitation', 'gambling', 'alcohol_abuse', 'smoking',
   'offensive_gesture', 'adult_advertisement', 'illegal_activity',
+  'kissing', 'romantic_kissing', 'intimate_couple', 'sexual_pose',
+  'bedroom_scene', 'making_out', 'bikini_focus', 'seductive_pose',
+  'sexually_suggestive_behavior', 'adult_intimacy', 'explicit_romance',
 ])
 
 const MEDIA_SYSTEM_INSTRUCTION = `You are a calibrated visual safety classifier for a family-friendly social media platform used by children and teenagers.
-Analyze the supplied image or extracted video frame. Detect nudity, pornography, sexual content, explicit body exposure, sexually suggestive bikini/lingerie imagery, erotic poses, violence, blood, gore, dead bodies, serious injuries, torture, animal cruelty, weapons, guns, rifles, explosives, bombs, knives used violently, drugs and drug consumption, self-harm, suicide attempts, cutting, hanging, dangerous self-injury, hate or Nazi symbols, racist or terrorist content, criminal activity, human trafficking, child abuse or exploitation, gambling, alcohol abuse, smoking, offensive gestures, adult advertisements, and illegal activities.
+Analyze the supplied image or video. Detect nudity, pornography, sexual content, explicit body exposure, kissing or romantic kissing, intimate couples, making out, adult intimacy, explicit romance, bedroom scenes, sexually suggestive bikini/lingerie focus, sexual or seductive poses, sexually suggestive behavior, violence, blood, gore, dead bodies, serious injuries, torture, animal cruelty, weapons, guns, rifles, explosives, bombs, knives used violently, drugs and drug consumption, self-harm, suicide attempts, cutting, hanging, dangerous self-injury, hate or Nazi symbols, racist or terrorist content, criminal activity, human trafficking, child abuse or exploitation, gambling, alcohol abuse, smoking, offensive gestures, adult advertisements, and illegal activities.
 Return ONLY JSON matching the response schema. Set safe=false only for clearly prohibited content that is visibly present. Confidence is confidence in the unsafe classification, not general image-recognition confidence.
 Ordinary nature, mountains, beaches, forests, landscapes, animals, buildings, vehicles, food, family photos, sports, technology, daily life, cartoons, fictional characters, and superheroes (including Batman) are safe unless clearly explicit or graphically violent. A costume, dark visual style, exposed non-intimate skin, ordinary swimwear, a fictional weapon, or an action pose alone is not sufficient for an unsafe decision. Do not identify people or infer protected personal attributes.`
 
@@ -275,12 +278,16 @@ export function parseMediaJson(text) {
 
 const configuredMediaThreshold = Number(process.env.MEDIA_REJECTION_CONFIDENCE)
 export const MEDIA_REJECTION_CONFIDENCE = Number.isFinite(configuredMediaThreshold)
-  ? Math.max(0.5, Math.min(1, configuredMediaThreshold))
-  : 0.85
+  ? Math.max(0.05, Math.min(1, configuredMediaThreshold))
+  : 0.35
 const CLEARLY_PROHIBITED_MEDIA_CATEGORIES = new Set([
   'sexual', 'nudity', 'pornography', 'adult_content', 'explicit_body_exposure',
   'child_abuse', 'child_exploitation', 'gore', 'dead_body', 'serious_injury',
   'torture', 'self_harm', 'suicide', 'cutting', 'hanging', 'dangerous_self_injury',
+  'sexually_suggestive_swimwear', 'lingerie', 'erotic_pose', 'kissing',
+  'romantic_kissing', 'intimate_couple', 'sexual_pose', 'bedroom_scene',
+  'making_out', 'bikini_focus', 'seductive_pose', 'sexually_suggestive_behavior',
+  'adult_intimacy', 'explicit_romance',
 ])
 
 export function decideMediaModeration(parsed) {
@@ -383,7 +390,7 @@ export async function analyzeImageWithGemini(image) {
 export async function analyzeMediaFrameWithGemini({ base64, mimeType = 'image/jpeg' } = {}) {
   if (!base64) return unavailableMediaResult('no_media_data')
   return callGeminiMedia([
-    { text: 'Analyze this uploaded media frame for family-friendly safety.' },
+    { text: 'Analyze this uploaded image or video for strict child-safety. Pay special attention to kissing, making out, romantic or adult intimacy, bedroom scenes, lingerie or bikini focus, and sexual or seductive poses.' },
     { inline_data: { mime_type: mimeType, data: base64 } },
   ])
 }

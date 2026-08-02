@@ -12,6 +12,7 @@ import {
   normalizeSightengineRequestError,
   normalizeSightengineResponse,
 } from '../src/services/sightengineService.js'
+import { combineModerationDecisions, shouldRunSecondAiCheck } from '../src/services/mediaModerationService.js'
 
 test('ordinary greetings and names are not flagged by rules', () => {
   for (const text of ['Hello', 'Ahmed', 'Hi there', 'Good morning']) {
@@ -58,7 +59,7 @@ test('safe everyday image classifications remain accepted', () => {
 })
 
 test('low-confidence or non-prohibited visual findings do not reject uploads', () => {
-  assert.equal(decideMediaModeration({ available: true, safe: false, reason: 'uncertain', categories: ['nudity'], confidence: 0.6 }).safe, true)
+  assert.equal(decideMediaModeration({ available: true, safe: false, reason: 'uncertain', categories: ['nudity'], confidence: 0.25 }).safe, true)
   assert.equal(decideMediaModeration({ available: true, safe: false, reason: 'fictional weapon', categories: ['weapon'], confidence: 0.99 }).safe, true)
 })
 
@@ -84,7 +85,7 @@ test('quota, timeout, and provider failures are unavailable rather than unsafe',
 test('Sightengine allows results below the high-confidence threshold', () => {
   const result = normalizeSightengineResponse({
     status: 'success', nudity: { sexual_activity: 0.2, sexual_display: 0.1, erotica: 0.3 },
-    gore: { prob: 0.4 }, weapon: { classes: { firearm: 0.8 } }, violence: { prob: 0.1 },
+    gore: { prob: 0.2 }, weapon: { classes: { firearm: 0.2 } }, violence: { prob: 0.1 },
     recreational_drug: { prob: 0.2 }, offensive: { nazi: 0.1 },
   })
   assert.equal(result.available, true)
@@ -99,8 +100,8 @@ test('Sightengine rejects high-confidence prohibited image results', () => {
     recreational_drug: { prob: 0.1 }, offensive: { nazi: 0.1 },
   })
   assert.equal(result.safe, false)
-  assert.ok(result.confidence >= 0.85)
-  assert.deepEqual(result.categories, ['nudity'])
+  assert.ok(result.confidence >= 0.35)
+  assert.deepEqual(result.categories, ['sexual_activity'])
 })
 
 test('Sightengine provider failures are unavailable, never unsafe', () => {
@@ -124,6 +125,52 @@ test('Sightengine rejects high-confidence gore', () => {
   assert.equal(result.available, true)
   assert.equal(result.safe, false)
   assert.deepEqual(result.categories, ['gore'])
+})
+
+test('Sightengine blocks suggestive child-sensitive classes at the strict threshold', () => {
+  for (const payload of [
+    { nudity: { very_suggestive: 0.36 } },
+    { nudity: { suggestive: 0.4 } },
+    { nudity: { lingerie: 0.42 } },
+  ]) {
+    const result = normalizeSightengineResponse({ status: 'success', ...payload })
+    assert.equal(result.available, true)
+    assert.equal(result.safe, false)
+  }
+})
+
+test('near-threshold safe Sightengine results are routed to Gemini only when enabled', () => {
+  const previousEnabled = process.env.ENABLE_SECOND_AI_CHECK
+  const previousProvider = process.env.SECOND_AI_PROVIDER
+  process.env.ENABLE_SECOND_AI_CHECK = 'true'
+  process.env.SECOND_AI_PROVIDER = 'gemini'
+  assert.equal(shouldRunSecondAiCheck({ available: true, safe: true, confidence: 0.25 }), true)
+  assert.equal(shouldRunSecondAiCheck({ available: true, safe: true, confidence: 0.05 }), false)
+  assert.equal(shouldRunSecondAiCheck({ available: true, safe: false, confidence: 0.5 }), false)
+  if (previousEnabled === undefined) delete process.env.ENABLE_SECOND_AI_CHECK
+  else process.env.ENABLE_SECOND_AI_CHECK = previousEnabled
+  if (previousProvider === undefined) delete process.env.SECOND_AI_PROVIDER
+  else process.env.SECOND_AI_PROVIDER = previousProvider
+})
+
+test('AI Vision can reject near-threshold child-inappropriate intimacy', () => {
+  const result = combineModerationDecisions(
+    { available: true, safe: true, confidence: 0.28, categories: [], modelCategories: { suggestive: 0.28 } },
+    { available: true, safe: false, confidence: 0.91, reason: 'Making out detected', categories: ['making_out'] },
+  )
+  assert.equal(result.safe, false)
+  assert.equal(result.rejectedBy, 'AI Vision')
+  assert.deepEqual(result.categories, ['making_out'])
+})
+
+test('AI Vision outage gracefully preserves Sightengine safe decision', () => {
+  const result = combineModerationDecisions(
+    { available: true, safe: true, confidence: 0.25, categories: [] },
+    { available: false, safe: null, reason: 'gemini_http_429', categories: [], confidence: null },
+  )
+  assert.equal(result.available, true)
+  assert.equal(result.safe, true)
+  assert.equal(result.secondaryModeration.available, false)
 })
 
 for (const [name, status, payload, expectedReason] of [

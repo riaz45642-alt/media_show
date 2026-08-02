@@ -8,8 +8,8 @@ export const SIGHTENGINE_MODELS = 'nudity-2.1,gore-2.0,weapon,violence,recreatio
 
 const configuredThreshold = Number(process.env.MEDIA_REJECTION_CONFIDENCE)
 export const SIGHTENGINE_REJECTION_THRESHOLD = Number.isFinite(configuredThreshold)
-  ? Math.max(0.5, Math.min(1, configuredThreshold))
-  : 0.85
+  ? Math.max(0.05, Math.min(1, configuredThreshold))
+  : 0.35
 
 function unavailable(reason, providerError = null) {
   return { available: false, safe: null, confidence: null, reason, categories: [], ...(providerError ? { providerError } : {}) }
@@ -71,7 +71,11 @@ export function normalizeSightengineResponse(payload) {
 
   const leaves = numericLeaves(payload)
   const scores = {
-    nudity: maxMatching(leaves, /nudity.*(sexual_activity|sexual_display|erotica|very_suggestive|explicit)/, /none|context/),
+    nudity: maxMatching(leaves, /nudity.*(sexual_display|explicit|visibly_undressed|sextoy)/, /none|context/),
+    sexual_activity: maxMatching(leaves, /nudity.*sexual_activity/, /none|context/),
+    erotica: maxMatching(leaves, /nudity.*erotica/, /none|context/),
+    very_suggestive: maxMatching(leaves, /nudity.*very_suggestive/, /none|context/),
+    suggestive: maxMatching(leaves, /nudity.*(suggestive|lingerie|suggestive_pose|suggestive_focus|very_revealing)/, /mildly_suggestive|none|context|very_suggestive/),
     gore: maxMatching(leaves, /gore|blood|corpse|wound|self_harm/, /none|safe/),
     weapon: maxMatching(leaves, /weapon|firearm|gun|knife/, /none|safe/),
     violence: maxMatching(leaves, /violence|physical_violence|threat/, /none|safe/),
@@ -88,6 +92,9 @@ export function normalizeSightengineResponse(payload) {
     confidence,
     reason: categories.length ? `High-confidence prohibited content detected: ${categories.join(', ')}` : '',
     categories,
+    modelCategories: scores,
+    moderationProvider: 'Sightengine',
+    rejectedBy: categories.length ? 'Sightengine' : null,
   }
 }
 
