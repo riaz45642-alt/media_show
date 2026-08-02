@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   Award, Heart, MessageCircle, ShieldCheck, Clock, Bell, AtSign,
-  UserPlus, Mail, Gavel, Flag, Lock, CheckCheck, Search, SlidersHorizontal, Scale,
+  UserPlus, Mail, Gavel, Flag, Lock, CheckCheck, Search, SlidersHorizontal, Scale, X,
 } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import EmptyState from '../components/common/EmptyState'
@@ -29,7 +29,7 @@ const DEFAULT_PREFS = Object.fromEntries(NOTIFICATION_CATEGORIES.filter((c) => c
 const PREFS_KEY = 'mediashow_notification_prefs'
 
 export default function Notifications() {
-  const { items, unreadCount, markAllRead, markRead, acceptFollowRequest, notificationPermission, enableBrowserNotifications } = useNotifications()
+  const { items, unreadCount, markAllRead, markRead, dismissNotification, acceptFollowRequest, notificationPermission, enableBrowserNotifications } = useNotifications()
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [showPrefs, setShowPrefs] = useState(false)
@@ -154,6 +154,7 @@ export default function Notifications() {
                   )}
                 </div>
                 {!n.read && <button aria-label="Mark read" onClick={() => markRead(n.id)} className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
+                <button aria-label="Dismiss notification" onClick={() => dismissNotification(n.id).catch(() => {})} className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/10"><X size={15} /></button>
               </div>
             )
           })}

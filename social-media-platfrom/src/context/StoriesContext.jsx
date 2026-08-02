@@ -53,6 +53,9 @@ export function StoriesProvider({ children }) {
     const response = await fetch(`${API_URL}/stories/${storyId}`, { method: 'DELETE', headers: headers() })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data.message || 'Unable to delete story.')
+    const removedEntry = Object.entries(storiesByUser).find(([, stories]) => stories.some((story) => story.id === storyId))
+    const removedAuthorId = removedEntry?.[0] || null
+    const removedLastStory = removedEntry?.[1]?.length === 1
     setStoriesByUser((previous) => {
       const next = {}
       for (const [authorId, stories] of Object.entries(previous)) {
@@ -61,8 +64,20 @@ export function StoriesProvider({ children }) {
       }
       return next
     })
+    if (removedAuthorId) {
+      setAuthors((previous) => {
+        if (!removedLastStory) return previous
+        const next = { ...previous }
+        delete next[removedAuthorId]
+        return next
+      })
+      setActiveEntryId((current) => {
+        const activeAuthorId = current === 'me' ? userId : current
+        return activeAuthorId === removedAuthorId && removedLastStory ? null : current
+      })
+    }
     return data
-  }, [])
+  }, [storiesByUser, userId])
 
   const getStories = useCallback((id) => storiesByUser[id === 'me' ? userId : id] || [], [storiesByUser, userId])
   const myStories = getStories('me')

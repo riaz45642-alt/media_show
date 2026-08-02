@@ -53,6 +53,20 @@ export async function markAllRead(req, res, next) {
   }
 }
 
+// DELETE /api/notifications/:id - dismiss a notification owned by the user.
+export async function dismissNotification(req, res, next) {
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM notifications WHERE id = $1 AND recipient_id = $2`,
+      [req.params.id, req.user.id]
+    )
+    if (!rowCount) return res.status(404).json({ message: 'Notification not found' })
+    res.status(204).end()
+  } catch (err) {
+    next(err)
+  }
+}
+
 // GET /api/notifications/preferences
 export async function getPreferences(req, res, next) {
   try {

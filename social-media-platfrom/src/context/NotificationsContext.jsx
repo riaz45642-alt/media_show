@@ -53,8 +53,35 @@ export function NotificationsProvider({ children }) {
         showBrowserNotification({ title: raw.title || 'New notification', body: item.text, link: item.link || '/notifications', tag: `notification-${item.id}` })
       }
     }
+    const onIncomingCall = (raw) => {
+      const item = {
+        id: `incoming-call-${raw.callId}`,
+        kind: 'incoming_call', type: 'incoming_call', category: 'messages',
+        title: 'Incoming call',
+        text: `${raw.callerName || 'Someone'} is calling you.`,
+        link: '/messages', read: false, transient: true,
+      }
+      setToasts((previous) => previous.some((entry) => entry.id === item.id) ? previous : [...previous.slice(-2), item])
+    }
+    const clearIncomingCall = ({ callId } = {}) => {
+      if (callId) setToasts((previous) => previous.filter((item) => item.id !== `incoming-call-${callId}`))
+    }
     socket.on('notification:new', onNotification)
-    return () => socket.off('notification:new', onNotification)
+    socket.on('call:incoming', onIncomingCall)
+    socket.on('call:accepted', clearIncomingCall)
+    socket.on('call:declined', clearIncomingCall)
+    socket.on('call:rejected', clearIncomingCall)
+    socket.on('call:ended', clearIncomingCall)
+    socket.on('call:timeout', clearIncomingCall)
+    return () => {
+      socket.off('notification:new', onNotification)
+      socket.off('call:incoming', onIncomingCall)
+      socket.off('call:accepted', clearIncomingCall)
+      socket.off('call:declined', clearIncomingCall)
+      socket.off('call:rejected', clearIncomingCall)
+      socket.off('call:ended', clearIncomingCall)
+      socket.off('call:timeout', clearIncomingCall)
+    }
   }, [user?.id])
 
   const enableBrowserNotifications = async () => {
@@ -63,6 +90,18 @@ export function NotificationsProvider({ children }) {
     return permission
   }
   const dismissToast = (id) => setToasts((previous) => previous.filter((item) => item.id !== id))
+  const dismissNotification = async (id) => {
+    const previous = items
+    setItems((current) => current.filter((item) => item.id !== id))
+    setToasts((current) => current.filter((item) => item.id !== id))
+    try { await request(`/notifications/${id}`, { method: 'DELETE' }) }
+    catch (requestError) { setItems(previous); throw requestError }
+  }
+
+  const markConversationNotificationsRead = useCallback((conversationId) => {
+    setItems((previous) => previous.map((item) => item.entity_type === 'conversation' && item.entity_id === conversationId && item.kind === 'message' ? { ...item, read: true } : item))
+    setToasts((previous) => previous.filter((item) => !(item.entity_type === 'conversation' && item.entity_id === conversationId && item.kind === 'message')))
+  }, [])
 
   const markAllRead = async () => {
     await request('/notifications/read-all', { method: 'POST' })
@@ -77,7 +116,7 @@ export function NotificationsProvider({ children }) {
     setItems((previous) => previous.map((item) => item.id === notificationId ? { ...item, read: true, accepted: true } : item))
   }
   const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items])
-  return <NotificationsContext.Provider value={{ items, setItems, unreadCount, markAllRead, markRead, acceptFollowRequest, refresh, toasts, dismissToast, notificationPermission, enableBrowserNotifications }}>{children}</NotificationsContext.Provider>
+  return <NotificationsContext.Provider value={{ items, setItems, unreadCount, markAllRead, markRead, dismissNotification, markConversationNotificationsRead, acceptFollowRequest, refresh, toasts, dismissToast, notificationPermission, enableBrowserNotifications }}>{children}</NotificationsContext.Provider>
 }
 
 export const useNotifications = () => useContext(NotificationsContext)

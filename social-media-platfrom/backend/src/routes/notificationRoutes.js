@@ -6,6 +6,7 @@ import {
   markAllRead,
   getPreferences,
   updatePreferences,
+  dismissNotification,
 } from '../controllers/notificationController.js'
 
 const router = Router()
@@ -16,5 +17,6 @@ router.get('/preferences', getPreferences)
 router.put('/preferences', updatePreferences)
 router.post('/read-all', markAllRead)
 router.post('/:id/read', markRead)
+router.delete('/:id', dismissNotification)
 
 export default router

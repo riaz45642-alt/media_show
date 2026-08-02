@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useAuth } from './AuthContext'
 import * as chatService from '../services/chatService'
 import { getSocket } from '../services/socketService'
+import { useNotifications } from './NotificationsContext'
 
 const ChatContext = createContext(null)
 
@@ -42,6 +43,7 @@ function normalizeConversation(row, currentUserId) {
 
 export function ChatProvider({ children }) {
   const { user } = useAuth()
+  const { markConversationNotificationsRead } = useNotifications()
   const [conversations, setConversations] = useState([])
   const [typing, setTyping] = useState({})
   const [loading, setLoading] = useState(false)
@@ -153,8 +155,9 @@ export function ChatProvider({ children }) {
 
   const markAsRead = useCallback((conversationId) => {
     setConversations((previous) => previous.map((item) => item.id === conversationId ? { ...item, unread: 0 } : item))
+    markConversationNotificationsRead(conversationId)
     chatService.markRead(conversationId).catch(() => {})
-  }, [])
+  }, [markConversationNotificationsRead])
 
   const touch = useCallback((conversationId, update) => setConversations((previous) => previous.map((item) => item.id === conversationId ? update(item) : item)), [])
   const deleteMessage = useCallback((conversationId, messageId) => touch(conversationId, (item) => ({ ...item, messages: item.messages.filter((message) => message.id !== messageId) })), [touch])

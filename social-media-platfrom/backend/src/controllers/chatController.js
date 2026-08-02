@@ -216,6 +216,16 @@ export async function markConversationRead(req, res, next) {
       [req.params.conversationId, req.user.id]
     )
     if (!rowCount) return res.status(403).json({ message: 'Conversation access denied' })
+    await pool.query(
+      `UPDATE notifications
+       SET read_at = COALESCE(read_at, now())
+       WHERE recipient_id = $1
+         AND kind = 'message'
+         AND entity_type = 'conversation'
+         AND entity_id = $2
+         AND read_at IS NULL`,
+      [req.user.id, req.params.conversationId]
+    )
     const peers = await pool.query(`SELECT user_id FROM conversation_members WHERE conversation_id = $1 AND user_id <> $2 AND left_at IS NULL`, [req.params.conversationId, req.user.id])
     for (const peer of peers.rows) getIO().to(`user:${peer.user_id}`).emit('message:read', { conversationId: req.params.conversationId, userId: req.user.id, readAt: rows[0].last_read_at })
     res.json({ ok: true })
