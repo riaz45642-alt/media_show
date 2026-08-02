@@ -55,8 +55,37 @@ export async function listPosts(req, res, next) {
   try {
     const { rows } = await pool.query(
       `${POST_SELECT}
+       LEFT JOIN user_settings author_settings ON author_settings.user_id = p.author_id
        WHERE p.moderation_status = 'safe' AND p.deleted_at IS NULL
-       ORDER BY p.published_at DESC NULLS LAST, p.created_at DESC LIMIT 50`
+         AND (
+           (
+             COALESCE(author_settings.profile_visibility, 'public'::visibility) = 'public'::visibility
+             AND p.visibility = 'public'::visibility
+           )
+           OR ($1::uuid IS NOT NULL AND p.author_id = $1::uuid)
+           OR (
+             $1::uuid IS NOT NULL
+             AND p.visibility IN ('public'::visibility, 'followers'::visibility)
+             AND EXISTS (
+               SELECT 1 FROM follows approved
+               WHERE approved.follower_id = $1::uuid AND approved.followed_id = p.author_id
+             )
+           )
+           OR (
+             $1::uuid IS NOT NULL
+             AND p.visibility = 'friends'::visibility
+             AND EXISTS (
+               SELECT 1 FROM follows outbound
+               WHERE outbound.follower_id = $1::uuid AND outbound.followed_id = p.author_id
+             )
+             AND EXISTS (
+               SELECT 1 FROM follows inbound
+               WHERE inbound.follower_id = p.author_id AND inbound.followed_id = $1::uuid
+             )
+           )
+         )
+       ORDER BY p.published_at DESC NULLS LAST, p.created_at DESC LIMIT 50`,
+      [req.user?.id || null]
     )
     res.json(rows)
   } catch (err) {

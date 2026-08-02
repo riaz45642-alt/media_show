@@ -74,10 +74,12 @@ export async function login(req, res, next) {
     const { rows } = await pool.query(
       `SELECT u.id, u.password_hash, u.role, u.status, u.created_at,
               p.display_name AS name, p.username, p.date_of_birth, p.age_group,
-              p.bio, p.safe_zone_score, (s.profile_visibility <> 'public') AS is_private
+              p.bio, p.safe_zone_score, avatar.storage_path AS avatar,
+              (s.profile_visibility <> 'public') AS is_private
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
        JOIN user_settings s ON s.user_id = u.id
+       LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
        WHERE u.email = $1 AND u.deleted_at IS NULL`,
       [email.toLowerCase()]
     )
@@ -193,9 +195,10 @@ export async function firebaseLogin(req, res, next) {
     const { rows } = await pool.query(
       `SELECT u.id, u.role, u.status, u.created_at,
               p.display_name AS name, p.username, p.date_of_birth, p.age_group,
-              p.bio, p.safe_zone_score, $2::text AS avatar,
+              p.bio, p.safe_zone_score, COALESCE(avatar.storage_path, $2::text) AS avatar,
               (s.profile_visibility <> 'public') AS is_private
        FROM users u JOIN user_profiles p ON p.user_id = u.id JOIN user_settings s ON s.user_id = u.id
+       LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
        WHERE u.id = $1`,
       [userId, decoded.picture || null]
     )

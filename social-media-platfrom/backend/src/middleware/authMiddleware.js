@@ -26,3 +26,12 @@ export async function requireAuth(req, res, next) {
     next(error)
   }
 }
+
+// Adds viewer identity when a valid token is supplied, while still allowing a
+// genuinely public request through. An invalid supplied token is never treated
+// as anonymous because that could produce surprising privacy behaviour.
+export async function optionalAuth(req, res, next) {
+  const header = req.headers.authorization
+  if (!header) return next()
+  return requireAuth(req, res, next)
+}

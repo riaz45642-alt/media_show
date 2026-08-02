@@ -58,7 +58,8 @@ export function PostsProvider({ children }) {
 
   useEffect(() => {
     let active = true
-    fetch(`${API_URL}/posts`)
+    const token = localStorage.getItem('mediashow_token')
+    fetch(`${API_URL}/posts`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then((response) => response.ok ? response.json() : [])
       .then((rows) => active && setPosts(rows.map(normalizePost)))
       .catch(() => active && setPosts([]))

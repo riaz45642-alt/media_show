@@ -1,11 +1,11 @@
 import { Router } from 'express'
 import { listPosts, createPost, updatePost, deletePost, toggleReaction } from '../controllers/postController.js'
-import { requireAuth } from '../middleware/authMiddleware.js'
+import { optionalAuth, requireAuth } from '../middleware/authMiddleware.js'
 import { validateBody } from '../middleware/validate.js'
 import { logUploadedMedia, uploadPostMedia } from '../middleware/postUpload.js'
 
 const router = Router()
-router.get('/', listPosts)
+router.get('/', optionalAuth, listPosts)
 router.post(
   '/',
   requireAuth,

@@ -79,7 +79,7 @@ export default function AddGroupMembersModal({ open, onClose, groupId, existingM
                   : [...items, String(person.id)])}
                 className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-gray-50 dark:hover:bg-white/5"
               >
-                <Avatar name={person.name} size={38} />
+                <Avatar name={person.name} src={person.avatar_url} size={38} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{person.name}</p>
                   {person.username && <p className="truncate text-xs text-gray-400">@{person.username}</p>}

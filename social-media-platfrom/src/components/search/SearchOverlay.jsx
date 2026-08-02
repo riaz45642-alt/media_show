@@ -65,7 +65,7 @@ export default function SearchOverlay({ open, onClose }) {
                 {people.map((person) => (
                   <button key={person.id} onClick={() => goTo(`/users/${person.id}`)}
                     className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-gray-50 dark:hover:bg-white/5">
-                    <Avatar name={person.name} size={38} />
+                    <Avatar name={person.name} src={person.avatar_url} size={38} />
                     <div><p className="text-sm font-medium">{person.name}</p>{person.username && <p className="text-xs text-gray-400">@{person.username}</p>}</div>
                   </button>
                 ))}
