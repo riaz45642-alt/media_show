@@ -6,6 +6,7 @@ import {
   PERSISTED_MODERATION_STATUSES,
   validateModerationDecision,
 } from '../src/services/moderationService.js'
+import { decideMediaModeration, parseMediaJson } from '../src/services/geminiService.js'
 
 test('ordinary greetings and names are not flagged by rules', () => {
   for (const text of ['Hello', 'Ahmed', 'Hi there', 'Good morning']) {
@@ -42,4 +43,26 @@ test('moderation decisions only persist values supported by moderation_state', (
     () => validateModerationDecision({ status: 'approved' }),
     (error) => error.code === 'INVALID_MODERATION_STATUS'
   )
+})
+
+test('safe everyday image classifications remain accepted', () => {
+  for (const reason of ['mountain landscape', 'Batman cartoon', 'family photo', 'cat', 'football']) {
+    const decision = decideMediaModeration({ available: true, safe: true, reason, categories: [], confidence: 0.99 })
+    assert.equal(decision.safe, true)
+  }
+})
+
+test('low-confidence or non-prohibited visual findings do not reject uploads', () => {
+  assert.equal(decideMediaModeration({ available: true, safe: false, reason: 'uncertain', categories: ['nudity'], confidence: 0.6 }).safe, true)
+  assert.equal(decideMediaModeration({ available: true, safe: false, reason: 'fictional weapon', categories: ['weapon'], confidence: 0.99 }).safe, true)
+})
+
+test('high-confidence explicit content is rejected', () => {
+  const decision = decideMediaModeration({ available: true, safe: false, reason: 'explicit nudity', categories: ['nudity'], confidence: 0.96 })
+  assert.equal(decision.safe, false)
+  assert.deepEqual(decision.categories, ['nudity'])
+})
+
+test('invalid Gemini media payloads fail parsing instead of becoming adult content', () => {
+  assert.throws(() => parseMediaJson('{"reason":"unknown","categories":[]}'), /safe must be boolean/)
 })

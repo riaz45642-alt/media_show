@@ -88,9 +88,10 @@ export const MEDIA_MODERATION_CATEGORIES = Object.freeze([
   'offensive_gesture', 'adult_advertisement', 'illegal_activity',
 ])
 
-const MEDIA_SYSTEM_INSTRUCTION = `You are a strict visual safety classifier for a family-friendly social media platform used by children and teenagers.
+const MEDIA_SYSTEM_INSTRUCTION = `You are a calibrated visual safety classifier for a family-friendly social media platform used by children and teenagers.
 Analyze the supplied image or extracted video frame. Detect nudity, pornography, sexual content, explicit body exposure, sexually suggestive bikini/lingerie imagery, erotic poses, violence, blood, gore, dead bodies, serious injuries, torture, animal cruelty, weapons, guns, rifles, explosives, bombs, knives used violently, drugs and drug consumption, self-harm, suicide attempts, cutting, hanging, dangerous self-injury, hate or Nazi symbols, racist or terrorist content, criminal activity, human trafficking, child abuse or exploitation, gambling, alcohol abuse, smoking, offensive gestures, adult advertisements, and illegal activities.
-Return ONLY JSON matching the response schema. Set safe=false whenever content is unsuitable for this audience. Do not identify people or infer protected personal attributes.`
+Return ONLY JSON matching the response schema. Set safe=false only for clearly prohibited content that is visibly present. Confidence is confidence in the unsafe classification, not general image-recognition confidence.
+Ordinary nature, mountains, beaches, forests, landscapes, animals, buildings, vehicles, food, family photos, sports, technology, daily life, cartoons, fictional characters, and superheroes (including Batman) are safe unless clearly explicit or graphically violent. A costume, dark visual style, exposed non-intimate skin, ordinary swimwear, a fictional weapon, or an action pose alone is not sufficient for an unsafe decision. Do not identify people or infer protected personal attributes.`
 
 const MEDIA_MODERATION_SCHEMA = {
   type: 'OBJECT',
@@ -112,6 +113,7 @@ const SAFETY_SETTINGS = [
   'HARM_CATEGORY_SEXUALLY_EXPLICIT',
   'HARM_CATEGORY_DANGEROUS_CONTENT',
 ].map((category) => ({ category, threshold: 'BLOCK_MEDIUM_AND_ABOVE' }))
+const MEDIA_SAFETY_SETTINGS = SAFETY_SETTINGS.map(({ category }) => ({ category, threshold: 'BLOCK_ONLY_HIGH' }))
 
 const CATEGORIES = [
   'toxicity', 'hate_speech', 'harassment', 'bullying', 'violence',
@@ -255,17 +257,50 @@ function unavailableMediaResult(reason) {
   return { available: false, safe: false, reason, categories: [], confidence: 0 }
 }
 
-function parseMediaJson(text) {
+export function parseMediaJson(text) {
   const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
   const categories = Array.isArray(parsed.categories)
     ? parsed.categories.filter((category) => MEDIA_MODERATION_CATEGORIES.includes(category))
     : []
+  if (typeof parsed.safe !== 'boolean') throw new TypeError('Gemini media response safe must be boolean')
+  if (!Number.isFinite(Number(parsed.confidence))) throw new TypeError('Gemini media response confidence must be numeric')
   return {
     available: true,
-    safe: parsed.safe === true,
+    safe: parsed.safe,
     reason: String(parsed.reason || ''),
     categories,
     confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
+  }
+}
+
+const configuredMediaThreshold = Number(process.env.MEDIA_REJECTION_CONFIDENCE)
+export const MEDIA_REJECTION_CONFIDENCE = Number.isFinite(configuredMediaThreshold)
+  ? Math.max(0.5, Math.min(1, configuredMediaThreshold))
+  : 0.85
+const CLEARLY_PROHIBITED_MEDIA_CATEGORIES = new Set([
+  'sexual', 'nudity', 'pornography', 'adult_content', 'explicit_body_exposure',
+  'child_abuse', 'child_exploitation', 'gore', 'dead_body', 'serious_injury',
+  'torture', 'self_harm', 'suicide', 'cutting', 'hanging', 'dangerous_self_injury',
+])
+
+export function decideMediaModeration(parsed) {
+  if (!parsed?.available) return parsed
+  const prohibitedCategories = parsed.categories.filter((category) => CLEARLY_PROHIBITED_MEDIA_CATEGORIES.has(category))
+  const reject = parsed.safe === false
+    && parsed.confidence >= MEDIA_REJECTION_CONFIDENCE
+    && prohibitedCategories.length > 0
+  return {
+    ...parsed,
+    safe: !reject,
+    reason: reject ? (parsed.reason || 'Clearly prohibited visual content detected.') : '',
+    categories: reject ? prohibitedCategories : [],
+    modelSafe: parsed.safe,
+    modelCategories: parsed.categories,
+    decisionReason: reject
+      ? `high_confidence_prohibited_category_${parsed.confidence}`
+      : parsed.safe === false
+        ? `accepted_below_or_outside_rejection_policy_${parsed.confidence}`
+        : 'model_classified_safe',
   }
 }
 
@@ -279,7 +314,7 @@ async function callGeminiMedia(parts, timeoutMs = 15000) {
       const response = await postGemini({
           system_instruction: { parts: [{ text: MEDIA_SYSTEM_INSTRUCTION }] },
           contents: [{ role: 'user', parts }],
-          safetySettings: SAFETY_SETTINGS,
+          safetySettings: MEDIA_SAFETY_SETTINGS,
           generationConfig: {
             temperature: 0,
             responseMimeType: 'application/json',
@@ -295,17 +330,24 @@ async function callGeminiMedia(parts, timeoutMs = 15000) {
         return unavailableMediaResult(`gemini_http_${response.status}`)
       }
       const data = await response.json()
+      console.info(JSON.stringify({ level: 'info', event: 'gemini_media_raw_response', model: resolvedModel, attempt, response: data }))
       if (data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason === 'SAFETY') {
-        return {
-          available: true,
-          safe: false,
-          reason: 'Media was blocked by Gemini safety filters.',
-          categories: ['adult_content'],
-          confidence: 0.99,
-        }
+        const reason = `gemini_safety_block_${data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason}`
+        console.warn(JSON.stringify({ level: 'warn', event: 'gemini_media_unstructured_safety_block', model: resolvedModel, reason, safetyRatings: data?.promptFeedback?.safetyRatings || data?.candidates?.[0]?.safetyRatings || [] }))
+        return unavailableMediaResult(reason)
       }
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
-      return text ? parseMediaJson(text) : unavailableMediaResult('gemini_empty_response')
+      if (!text) return unavailableMediaResult('gemini_empty_response')
+      try {
+        const parsed = parseMediaJson(text)
+        console.info(JSON.stringify({ level: 'info', event: 'gemini_media_parsed_response', model: resolvedModel, parsed }))
+        const decision = decideMediaModeration(parsed)
+        console.info(JSON.stringify({ level: 'info', event: 'gemini_media_final_decision', model: resolvedModel, decision }))
+        return decision
+      } catch (parseError) {
+        console.error(JSON.stringify({ level: 'error', event: 'gemini_media_parse_failed', model: resolvedModel, rawText: text, error: { name: parseError.name, message: parseError.message, stack: parseError.stack } }))
+        return unavailableMediaResult('gemini_invalid_json_response')
+      }
     } catch (error) {
       if (attempt === MAX_ATTEMPTS || error.name === 'AbortError') {
         return unavailableMediaResult(error.name === 'AbortError' ? 'gemini_timeout' : 'gemini_call_failed')
