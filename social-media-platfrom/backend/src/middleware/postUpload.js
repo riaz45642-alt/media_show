@@ -78,3 +78,16 @@ export const uploadStoryMedia = multer({
     callback(null, true)
   },
 }).single('media')
+
+export const uploadAvatarMedia = multer({
+  storage,
+  limits: { files: 1, fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => {
+    if (!file.mimetype.startsWith('image/') || !ALLOWED_TYPES.has(file.mimetype)) {
+      const error = new Error('Only JPEG, PNG, WebP, and GIF profile images are supported')
+      error.status = 415
+      return callback(error)
+    }
+    callback(null, true)
+  },
+}).single('avatar')

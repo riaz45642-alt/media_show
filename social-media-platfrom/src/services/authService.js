@@ -90,6 +90,12 @@ export async function updateProfile(patch) {
   return updateStoredUser({ ...data.user, isPrivate: data.user?.is_private ?? patch.isPrivate })
 }
 
+export async function deleteAccount() {
+  const data = await request('/users/me', { method: 'DELETE' })
+  logout()
+  return data
+}
+
 export function logout() {
   localStorage.removeItem(STORAGE_KEY)
   localStorage.removeItem(TOKEN_KEY)

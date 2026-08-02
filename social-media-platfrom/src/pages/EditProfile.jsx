@@ -19,6 +19,7 @@ export default function EditProfile() {
     contactEmail: user?.contact_email || '',
   })
   const [avatarPreview, setAvatarPreview] = useState(user?.avatar || '')
+  const [avatarFile, setAvatarFile] = useState(null)
   const [saved, setSaved] = useState(false)
   const [blockedTerms, setBlockedTerms] = useState([])
   const initialProfile = useRef({ name: user?.name || '', username: user?.username || '', bio: user?.bio || '', contactEmail: user?.contact_email || '' })
@@ -41,6 +42,7 @@ export default function EditProfile() {
   const handleAvatar = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setAvatarFile(file)
     // Use a base64 data URL (not URL.createObjectURL) since the avatar is
     // persisted to localStorage — object URLs are revoked/invalidated on
     // reload and would leave the profile picture broken after refresh.
@@ -50,6 +52,7 @@ export default function EditProfile() {
   }
 
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
   const handleSubmit = async (e) => {
     e.preventDefault()
     const nameResult = filterTextContent(form.name, { context: 'identifier' })
@@ -58,21 +61,52 @@ export default function EditProfile() {
     setBlockedTerms(blocked)
     if (blocked.length) return
     setError('')
-    const token = localStorage.getItem('mediashow_token')
-    const normalized = { name: form.name.trim(), username: form.username.trim().toLowerCase(), bio: form.bio.trim(), contactEmail: form.contactEmail.trim().toLowerCase() }
-    const patch = Object.fromEntries(Object.entries(normalized).filter(([key, value]) => value !== initialProfile.current[key]))
-    const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/users/me`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify(patch),
-    })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) {
-      setError(data.code === 'USERNAME_TAKEN' ? 'That username is already taken.' : (data.message || 'Unable to save profile.'))
-      return
+    setSaving(true)
+    try {
+      const token = localStorage.getItem('mediashow_token')
+      const normalized = { name: form.name.trim(), username: form.username.trim().toLowerCase(), bio: form.bio.trim(), contactEmail: form.contactEmail.trim().toLowerCase() }
+      const patch = Object.fromEntries(Object.entries(normalized).filter(([key, value]) => value !== initialProfile.current[key]))
+      if (!Object.keys(patch).length && !avatarFile) {
+        setSaved(true)
+        setTimeout(() => navigate('/profile'), 400)
+        return
+      }
+      let updatedProfile = {}
+      if (Object.keys(patch).length) {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/users/me`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify(patch),
+        })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          setError(data.code === 'USERNAME_TAKEN' ? 'That username is already taken.' : (data.message || `Unable to save profile (${response.status}).`))
+          return
+        }
+        updatedProfile = data.user || {}
+      }
+      let savedAvatar = user?.avatar || ''
+      if (avatarFile) {
+        const avatarBody = new FormData()
+        avatarBody.append('avatar', avatarFile)
+        const avatarResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/users/me/avatar`, {
+          method: 'PUT', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: avatarBody,
+        })
+        const avatarData = await avatarResponse.json().catch(() => ({}))
+        if (!avatarResponse.ok) {
+          setError(avatarData.message || `Unable to save profile image (${avatarResponse.status}).`)
+          return
+        }
+        savedAvatar = avatarData.avatar_url
+      }
+      initialProfile.current = normalized
+      updateUser({ ...updatedProfile, avatar: savedAvatar, avatar_url: savedAvatar })
+      setSaved(true)
+      setTimeout(() => navigate('/profile'), 700)
+    } catch (requestError) {
+      setError(requestError.message || 'Unable to reach the server. Please try again.')
+    } finally {
+      setSaving(false)
     }
-    updateUser({ ...data.user, avatar: avatarPreview })
-    setSaved(true)
-    setTimeout(() => navigate('/profile'), 700)
   }
 
   return (
@@ -118,7 +152,7 @@ export default function EditProfile() {
         <ContentFilterWarning matches={blockedTerms} />
         {error && <p className="text-sm text-red-500">{error}</p>}
 
-        <Button type="submit" fullWidth size="lg">
+        <Button type="submit" fullWidth size="lg" disabled={saving}>
           {saved ? 'Saved ✓' : 'Save Changes'}
         </Button>
       </form>

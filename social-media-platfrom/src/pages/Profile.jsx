@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Settings as SettingsIcon, Edit3, LogOut, Grid3x3, Bookmark, Plus, Lock, Phone, Mail } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Settings as SettingsIcon, Edit3, LogOut, Trash2, Grid3x3, Bookmark, Plus, Lock, Phone, Mail } from 'lucide-react'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import ProfileGrid from '../components/profile/ProfileGrid'
@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext'
 import { usePosts } from '../context/PostsContext'
 import { useLanguage } from '../context/LanguageContext'
 import { getAgeGroup, AGE_GROUP_LABEL } from '../utils/ageGroup'
+import * as authService from '../services/authService'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
@@ -23,6 +24,24 @@ export default function Profile() {
   const [tab, setTab] = useState('posts')
   const [createOpen, setCreateOpen] = useState(false)
   const [profile, setProfile] = useState(user)
+  const [deletingAccount, setDeletingAccount] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const navigate = useNavigate()
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm('Are you sure you want to permanently delete your account? This action cannot be undone.')) return
+    setDeletingAccount(true)
+    setDeleteError('')
+    try {
+      await authService.deleteAccount()
+      logout()
+      window.alert('Your account has been permanently deleted.')
+      navigate('/login', { replace: true })
+    } catch (error) {
+      setDeleteError(error.message || 'Unable to delete your account. Please try again.')
+      setDeletingAccount(false)
+    }
+  }
 
   useEffect(() => {
     const token = localStorage.getItem('mediashow_token')
@@ -56,7 +75,7 @@ export default function Profile() {
 
       <div className="soft-card p-6 text-center animate-scaleIn">
         <div className="flex justify-center">
-          <Avatar name={user?.name || 'You'} src={user?.avatar} size={84} ring />
+          <Avatar name={profile?.name || user?.name || 'You'} src={profile?.avatar_url || user?.avatar} size={84} ring />
         </div>
         <h2 className="mt-3 font-display text-lg font-bold text-gray-800 dark:text-gray-100">
           {user?.name || 'Explorer'}
@@ -189,6 +208,15 @@ export default function Profile() {
         >
           <LogOut size={16} /> {t('log_out')}
         </button>
+        <button
+          type="button"
+          onClick={handleDeleteAccount}
+          disabled={deletingAccount}
+          className="tap-scale w-full flex items-center gap-2 justify-center rounded-2xl bg-red-600 p-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Trash2 size={16} /> {deletingAccount ? 'Deleting account…' : 'Delete Account'}
+        </button>
+        {deleteError && <p className="text-center text-sm text-red-500">{deleteError}</p>}
       </div>
 
       <CreatePostModal open={createOpen} onClose={() => setCreateOpen(false)} />

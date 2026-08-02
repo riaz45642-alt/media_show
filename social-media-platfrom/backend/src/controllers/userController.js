@@ -2,6 +2,27 @@ import { pool } from '../config/db.js'
 import { moderate } from '../services/moderationService.js'
 import { validateDisplayName } from '../services/ruleBasedFilter.js'
 import { createNotification } from '../services/notificationService.js'
+import { permanentlyDeleteAccount } from '../services/accountDeletionService.js'
+import fs from 'node:fs/promises'
+import { moderateUploadedMedia } from '../services/mediaModerationService.js'
+import { deletePublicMedia, objectPathFromPublicUrl, uploadPublicMedia } from '../services/objectStorageService.js'
+
+let profileSchemaReady
+async function ensureProfileSchema() {
+  if (!profileSchemaReady) {
+    profileSchemaReady = pool.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS contact_email citext`)
+      .catch((error) => {
+        profileSchemaReady = null
+        const schemaError = new Error('Profile database schema is not ready. Apply migration 013_public_contact_email.sql.')
+        schemaError.status = 503
+        schemaError.code = 'PROFILE_SCHEMA_OUTDATED'
+        schemaError.expose = true
+        schemaError.cause = error
+        throw schemaError
+      })
+  }
+  await profileSchemaReady
+}
 
 function clamp(n) {
   return Math.max(0, Math.min(100, Math.round(n)))
@@ -33,6 +54,7 @@ export async function searchUsers(req, res, next) {
 
 export async function getUserProfile(req, res, next) {
   try {
+    await ensureProfileSchema()
     const { rows } = await pool.query(
       `SELECT u.id, p.display_name AS name, p.username, p.bio, p.contact_email, p.age_group,
               avatar.storage_path AS avatar_url,
@@ -256,14 +278,17 @@ export async function listConnections(req, res, next) {
 
 export async function getMe(req, res, next) {
   try {
+    await ensureProfileSchema()
     const { rows } = await pool.query(
       `SELECT u.id, p.display_name AS name, p.date_of_birth, p.age_group,
               p.username, p.bio, p.contact_email, p.safe_zone_score, u.role, u.status,
+              avatar.storage_path AS avatar_url,
               (s.profile_visibility <> 'public') AS is_private, s.messaging_enabled,
               (SELECT count(*)::int FROM follows WHERE followed_id = u.id) AS follower_count,
               (SELECT count(*)::int FROM follows WHERE follower_id = u.id) AS following_count,
               (SELECT count(*)::int FROM posts WHERE author_id = u.id AND deleted_at IS NULL AND moderation_status = 'safe') AS post_count
        FROM users u JOIN user_profiles p ON p.user_id = u.id JOIN user_settings s ON s.user_id = u.id
+       LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
        WHERE u.id = $1`,
       [req.user.id]
     )
@@ -275,6 +300,7 @@ export async function getMe(req, res, next) {
 
 export async function updateMe(req, res, next) {
   try {
+    await ensureProfileSchema()
     const { isPrivate } = req.body
     const currentResult = await pool.query(
       `SELECT user_id AS id, display_name AS name, username, date_of_birth, age_group, bio, contact_email
@@ -340,6 +366,76 @@ export async function updateMe(req, res, next) {
     }
     console.error('updateMe failed:', { userId: req.user?.id, code: err.code, constraint: err.constraint, detail: err.detail, stack: err.stack })
     next(err)
+  }
+}
+
+export async function deleteMe(req, res, next) {
+  try {
+    const result = await permanentlyDeleteAccount(req.user.id)
+    if (!result.found) return res.status(404).json({ message: 'Account not found.', code: 'ACCOUNT_NOT_FOUND' })
+    console.info(JSON.stringify({
+      level: 'info', event: 'account_permanently_deleted', userId: req.user.id,
+      storageCleanupFailures: result.storageCleanupFailures.length,
+    }))
+    res.status(200).json({
+      message: 'Your account has been permanently deleted.',
+      storageCleanupPending: result.storageCleanupFailures.length > 0,
+    })
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: 'error', event: 'account_deletion_failed', userId: req.user?.id,
+      code: error.code, message: error.message, detail: error.detail, stack: error.stack,
+    }))
+    next(error)
+  }
+}
+
+export async function updateMyAvatar(req, res, next) {
+  const file = req.file
+  if (!file) return res.status(400).json({ message: 'Profile image is required.', code: 'AVATAR_REQUIRED' })
+  try {
+    const [decision] = await moderateUploadedMedia([file])
+    if (!decision.available) {
+      await fs.unlink(file.path).catch(() => {})
+      return res.status(503).json({ message: 'Media moderation is temporarily unavailable. Please try again later.', code: decision.reason })
+    }
+    if (!decision.safe) {
+      await fs.unlink(file.path).catch(() => {})
+      return res.status(422).json({ message: 'Profile image rejected.', reason: decision.reason, categories: decision.categories })
+    }
+    const stored = await uploadPublicMedia(file, `avatars/${req.user.id}`)
+    const client = await pool.connect()
+    let oldMedia
+    try {
+      await client.query('BEGIN')
+      oldMedia = (await client.query(
+        `SELECT ma.id, ma.storage_bucket, ma.storage_path FROM user_profiles p
+         LEFT JOIN media_assets ma ON ma.id = p.avatar_media_id WHERE p.user_id = $1::uuid FOR UPDATE`, [req.user.id]
+      )).rows[0]
+      const media = (await client.query(
+        `INSERT INTO media_assets (owner_id, kind, storage_bucket, storage_path, mime_type, byte_size, moderation_status)
+         VALUES ($1::uuid,'image',$2,$3,$4,$5,'safe') RETURNING id`,
+        [req.user.id, stored.bucket, stored.publicUrl, file.mimetype, file.size]
+      )).rows[0]
+      await client.query(`UPDATE user_profiles SET avatar_media_id = $1::uuid, updated_at = now() WHERE user_id = $2::uuid`, [media.id, req.user.id])
+      if (oldMedia?.id) await client.query(`DELETE FROM media_assets WHERE id = $1::uuid`, [oldMedia.id])
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      await deletePublicMedia(stored).catch(() => {})
+      throw error
+    } finally { client.release() }
+
+    if (oldMedia?.storage_path) {
+      const oldPath = objectPathFromPublicUrl(oldMedia.storage_path, oldMedia.storage_bucket)
+      if (oldPath) await deletePublicMedia({ bucket: oldMedia.storage_bucket, objectPath: oldPath }).catch((error) => {
+        console.error(JSON.stringify({ level: 'error', event: 'old_avatar_storage_delete_failed', userId: req.user.id, code: error.code, message: error.message }))
+      })
+    }
+    res.status(200).json({ avatar_url: stored.publicUrl })
+  } catch (error) {
+    await fs.unlink(file.path).catch(() => {})
+    next(error)
   }
 }
 

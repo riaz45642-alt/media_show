@@ -1,10 +1,13 @@
 import { Router } from 'express'
-import { getMe, updateMe, getReputation, getModerationHistory, searchUsers, getUserProfile, getUserPosts, toggleFollow, acceptFollowRequest, listConnections } from '../controllers/userController.js'
+import { deleteMe, getMe, updateMe, updateMyAvatar, getReputation, getModerationHistory, searchUsers, getUserProfile, getUserPosts, toggleFollow, acceptFollowRequest, listConnections } from '../controllers/userController.js'
 import { requireAuth } from '../middleware/authMiddleware.js'
 import { validateBody } from '../middleware/validate.js'
+import { uploadAvatarMedia } from '../middleware/postUpload.js'
 
 const router = Router()
 router.get('/me', requireAuth, getMe)
+router.delete('/me', requireAuth, deleteMe)
+router.put('/me/avatar', requireAuth, uploadAvatarMedia, updateMyAvatar)
 router.get('/me/moderation-history', requireAuth, getModerationHistory)
 router.get('/', requireAuth, searchUsers)
 router.get('/:id', requireAuth, getUserProfile)

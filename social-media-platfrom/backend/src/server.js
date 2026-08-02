@@ -134,7 +134,12 @@ app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ message: 'Malformed JSON body' })
   }
-  res.status(status).json({ message: status < 500 ? err.message : 'Server error', requestId: req.requestId })
+  const expose = status < 500 || err.expose === true
+  res.status(status).json({
+    message: expose ? err.message : 'Server error',
+    ...(err.code && expose ? { code: err.code } : {}),
+    requestId: req.requestId,
+  })
 })
 
 function sanitizePayload(value) {
