@@ -45,6 +45,33 @@ const ALLOWED_TYPES = new Set([
   'video/mp4', 'video/webm',
 ])
 
+const logUploadCandidate = (req, file, accepted, reason = null) => console.info(JSON.stringify({
+  level: 'info', event: 'upload_mime_checked', requestId: req.requestId, userId: req.user?.id,
+  fileName: file.originalname, mimeType: file.mimetype, accepted, reason,
+}))
+
+function mediaFileFilter(req, file, callback) {
+  if (!ALLOWED_TYPES.has(file.mimetype)) {
+    logUploadCandidate(req, file, false, 'unsupported_mime_type')
+    const error = new Error('Only JPEG, PNG, WebP, GIF, MP4, and WebM files are supported')
+    error.status = 415
+    error.code = 'UNSUPPORTED_MEDIA_TYPE'
+    return callback(error)
+  }
+  logUploadCandidate(req, file, true)
+  callback(null, true)
+}
+
+export function logUploadedMedia(req, _res, next) {
+  const files = req.files || (req.file ? [req.file] : [])
+  console.info(JSON.stringify({
+    level: 'info', event: 'media_upload_received', requestId: req.requestId, userId: req.user?.id,
+    fileCount: files.length,
+    files: files.map((file) => ({ fileName: file.originalname, mimeType: file.mimetype, byteSize: file.size })),
+  }))
+  next()
+}
+
 const storage = multer.diskStorage({
   destination: uploadDirectory,
   filename: (_req, file, callback) => {
@@ -56,27 +83,13 @@ const storage = multer.diskStorage({
 export const uploadPostMedia = multer({
   storage,
   limits: { files: 6, fileSize: 50 * 1024 * 1024 },
-  fileFilter: (_req, file, callback) => {
-    if (!ALLOWED_TYPES.has(file.mimetype)) {
-      const error = new Error('Only JPEG, PNG, WebP, GIF, MP4, and WebM files are supported')
-      error.status = 415
-      return callback(error)
-    }
-    callback(null, true)
-  },
+  fileFilter: mediaFileFilter,
 }).array('media', 6)
 
 export const uploadStoryMedia = multer({
   storage,
   limits: { files: 1, fileSize: 50 * 1024 * 1024 },
-  fileFilter: (_req, file, callback) => {
-    if (!ALLOWED_TYPES.has(file.mimetype)) {
-      const error = new Error('Only JPEG, PNG, WebP, GIF, MP4, and WebM files are supported')
-      error.status = 415
-      return callback(error)
-    }
-    callback(null, true)
-  },
+  fileFilter: mediaFileFilter,
 }).single('media')
 
 export const uploadAvatarMedia = multer({

@@ -53,7 +53,9 @@ export async function analyzeImage(file) {
 
 export async function moderateContent({ text, image, contentType = 'post' }) {
   let imagePayload = null
-  if (image) {
+  // Video moderation is authoritative on the multipart upload endpoint. Do not
+  // route a video through this image-only JSON preflight endpoint.
+  if (image && !image.type?.startsWith('video/')) {
     imagePayload = image instanceof File || image instanceof Blob ? await fileToBase64Image(image) : image
   }
 

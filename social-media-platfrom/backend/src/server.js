@@ -117,9 +117,12 @@ app.use((req, res) => {
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
+  const multerStatus = err.name === 'MulterError'
+    ? (err.code === 'LIMIT_FILE_SIZE' ? 413 : 400)
+    : null
   const status = err.type === 'entity.parse.failed'
     ? 400
-    : (Number.isInteger(err.status) ? err.status : 500)
+    : (multerStatus || (Number.isInteger(err.status) ? err.status : 500))
   console.error(JSON.stringify({
     level: 'error',
     event: 'request_failed',
@@ -133,6 +136,15 @@ app.use((err, req, res, next) => {
   // Malformed JSON from express.json() lands here as a SyntaxError.
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ message: 'Malformed JSON body' })
+  }
+  if (err.name === 'MulterError') {
+    return res.status(status).json({
+      message: err.code === 'LIMIT_FILE_SIZE'
+        ? 'Media file is too large. Upload MP4/WebM videos or supported images up to 50 MB.'
+        : 'The media upload request is invalid.',
+      code: err.code,
+      requestId: req.requestId,
+    })
   }
   const expose = status < 500 || err.expose === true
   res.status(status).json({

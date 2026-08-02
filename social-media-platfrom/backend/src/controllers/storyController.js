@@ -98,6 +98,14 @@ export async function createStory(req, res, next) {
   if (!decision?.available) {
     await fs.unlink(file.path).catch(() => {})
     logStage(req, 'story_moderation_unavailable', { reason: decision?.reason })
+    if (decision?.validationError) {
+      return res.status(decision.httpStatus || 422).json({
+        message: decision.userMessage,
+        reason: decision.userMessage,
+        code: decision.code,
+        mediaType: decision.mediaType,
+      })
+    }
     return res.status(503).json({
       message: 'Media moderation is temporarily unavailable. Please try again later.',
       code: decision?.reason || 'media_moderation_unavailable',

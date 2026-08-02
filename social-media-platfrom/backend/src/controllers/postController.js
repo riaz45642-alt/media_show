@@ -86,6 +86,15 @@ export async function createPost(req, res, next) {
     const unavailable = mediaResults.find((decision) => !decision.available)
     if (unavailable) {
       await Promise.allSettled(files.map((file) => fs.unlink(file.path)))
+      if (unavailable.validationError) {
+        return res.status(unavailable.httpStatus || 422).json({
+          message: unavailable.userMessage,
+          reason: unavailable.userMessage,
+          code: unavailable.code,
+          fileName: unavailable.fileName,
+          mediaType: unavailable.mediaType,
+        })
+      }
       return res.status(503).json({
         message: 'Media moderation is temporarily unavailable. Please try again later.',
         reason: 'Media moderation is temporarily unavailable. Please try again later.',

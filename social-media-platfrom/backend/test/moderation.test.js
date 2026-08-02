@@ -210,6 +210,45 @@ test('Sightengine timeout remains unavailable', () => {
   assert.equal(result.reason, 'sightengine_timeout')
 })
 
+test('Sightengine parses frame-based safe video responses', () => {
+  const result = normalizeSightengineResponse({
+    status: 'success',
+    data: { frames: [{ info: { position: 0 }, nudity: { sexual_activity: 0.01, sexual_display: 0.01, erotica: 0.01, very_suggestive: 0.02, none: 0.98 } }] },
+  }, { mediaType: 'video' })
+  assert.equal(result.available, true)
+  assert.equal(result.safe, true)
+})
+
+test('Sightengine reports unsupported video as a permanent client validation error', () => {
+  const result = interpretSightengineHttpResponse(400, {
+    status: 'failure', error: { type: 'media_error', code: 4, message: 'Unsupported video codec or format' },
+  }, { mediaType: 'video' })
+  assert.equal(result.available, false)
+  assert.equal(result.safe, null)
+  assert.equal(result.validationError, true)
+  assert.equal(result.code, 'UNSUPPORTED_VIDEO_FORMAT')
+  assert.equal(result.httpStatus, 415)
+})
+
+test('Sightengine reports videos beyond the synchronous limit clearly', () => {
+  const result = interpretSightengineHttpResponse(400, {
+    status: 'failure', error: { type: 'media_error', message: 'Video duration is longer than 60 seconds' },
+  }, { mediaType: 'video' })
+  assert.equal(result.available, false)
+  assert.equal(result.validationError, true)
+  assert.equal(result.code, 'VIDEO_DURATION_UNSUPPORTED')
+  assert.equal(result.httpStatus, 422)
+})
+
+test('Sightengine video rate limits remain temporary provider failures', () => {
+  const result = interpretSightengineHttpResponse(429, {
+    status: 'failure', error: { type: 'usage_limit', message: 'Rate limited' },
+  }, { mediaType: 'video' })
+  assert.equal(result.available, false)
+  assert.equal(result.safe, null)
+  assert.equal(result.validationError, undefined)
+})
+
 test('Sightengine malformed JSON/result remains unavailable rather than unsafe', () => {
   for (const payload of [null, 'not-json', {}, []]) {
     const result = normalizeSightengineResponse(payload)

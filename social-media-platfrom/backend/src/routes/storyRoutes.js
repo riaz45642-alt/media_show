@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/authMiddleware.js'
-import { uploadStoryMedia } from '../middleware/postUpload.js'
+import { logUploadedMedia, uploadStoryMedia } from '../middleware/postUpload.js'
 import { createStory, deleteStory, listStories, markStoryViewed, toggleStoryLike } from '../controllers/storyController.js'
 
 const router = Router()
@@ -16,6 +16,7 @@ router.post('/',
     next()
   },
   uploadStoryMedia,
+  logUploadedMedia,
   (req, _res, next) => {
     console.info(JSON.stringify({
       level: 'info', event: 'story_file_received', requestId: req.requestId,

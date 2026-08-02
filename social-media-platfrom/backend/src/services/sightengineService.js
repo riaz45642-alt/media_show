@@ -11,8 +11,8 @@ export const SIGHTENGINE_REJECTION_THRESHOLD = Number.isFinite(configuredThresho
   ? Math.max(0.05, Math.min(1, configuredThreshold))
   : 0.35
 
-function unavailable(reason, providerError = null) {
-  return { available: false, safe: null, confidence: null, reason, categories: [], ...(providerError ? { providerError } : {}) }
+function unavailable(reason, providerError = null, details = {}) {
+  return { available: false, safe: null, confidence: null, reason, categories: [], ...details, ...(providerError ? { providerError } : {}) }
 }
 
 function log(event, details, level = 'info') {
@@ -51,18 +51,37 @@ function hasModerationData(payload) {
     .some((key) => payload[key] && typeof payload[key] === 'object')
 }
 
-function providerFailure(payload) {
+function classifyMediaValidationFailure(payload, mediaType = '') {
+  const message = String(payload?.error?.message || payload?.message || '').toLowerCase()
+  const video = mediaType === 'video'
+  if (video && /(duration|too long|longer than|60\s*seconds?|one minute|max(?:imum)? length)/i.test(message)) {
+    return { validationError: true, code: 'VIDEO_DURATION_UNSUPPORTED', httpStatus: 422,
+      userMessage: 'This video is too long for synchronous moderation. Please upload an MP4 or WebM video shorter than 60 seconds.' }
+  }
+  if (video && /(unsupported|format|codec|decode|corrupt|invalid video|cannot read|could not read|media type)/i.test(message)) {
+    return { validationError: true, code: 'UNSUPPORTED_VIDEO_FORMAT', httpStatus: 415,
+      userMessage: 'This video format or codec is not supported. Please upload a valid MP4 or WebM video.' }
+  }
+  if (/(too large|file size|payload too large|request entity too large|max(?:imum)? size)/i.test(message)) {
+    return { validationError: true, code: video ? 'VIDEO_TOO_LARGE' : 'MEDIA_TOO_LARGE', httpStatus: 413,
+      userMessage: video ? 'This video is too large. Please upload an MP4 or WebM file smaller than 50 MB.' : 'This media file is too large.' }
+  }
+  return null
+}
+
+function providerFailure(payload, context = {}) {
   const type = payload?.error?.type || 'provider_failure'
   const code = payload?.error?.code
   const message = payload?.error?.message || 'Sightengine could not analyze the media.'
-  return unavailable(`sightengine_${type}${code == null ? '' : `_${code}`}`, { type, code: code ?? null, message })
+  const validation = classifyMediaValidationFailure(payload, context.mediaType)
+  return unavailable(`sightengine_${type}${code == null ? '' : `_${code}`}`, { type, code: code ?? null, message }, validation || {})
 }
 
-export function normalizeSightengineResponse(payload) {
+export function normalizeSightengineResponse(payload, context = {}) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return unavailable('sightengine_malformed_response')
   }
-  if (payload.status === 'failure' || payload.error) return providerFailure(payload)
+  if (payload.status === 'failure' || payload.error) return providerFailure(payload, context)
 
   // Sightengine currently documents status="success", but accepting a valid
   // result object without that optional envelope prevents a successful result
@@ -98,19 +117,23 @@ export function normalizeSightengineResponse(payload) {
   }
 }
 
-export function interpretSightengineHttpResponse(status, payload) {
+export function interpretSightengineHttpResponse(status, payload, context = {}) {
   if (!Number.isInteger(status) || status < 200 || status >= 300) {
-    const failure = providerFailure(payload)
-    return unavailable(`sightengine_http_${status || 'unknown'}_${failure.reason.replace(/^sightengine_/, '')}`, failure.providerError)
+    const failure = providerFailure(payload, context)
+    return unavailable(`sightengine_http_${status || 'unknown'}_${failure.reason.replace(/^sightengine_/, '')}`, failure.providerError, {
+      ...(failure.validationError ? {
+        validationError: true, code: failure.code, httpStatus: failure.httpStatus, userMessage: failure.userMessage,
+      } : {}),
+    })
   }
-  return normalizeSightengineResponse(payload)
+  return normalizeSightengineResponse(payload, context)
 }
 
-export function normalizeSightengineRequestError(error) {
+export function normalizeSightengineRequestError(error, context = {}) {
   if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT' || /timeout/i.test(error?.message || '')) {
     return unavailable('sightengine_timeout')
   }
-  if (error?.response) return interpretSightengineHttpResponse(error.response.status, error.response.data)
+  if (error?.response) return interpretSightengineHttpResponse(error.response.status, error.response.data, context)
   return unavailable('sightengine_request_failed', {
     type: error?.name || 'Error', code: error?.code || null, message: error?.message || 'Unknown request error',
   })
@@ -127,6 +150,8 @@ export async function moderateMediaWithSightengine(file) {
     fileName: file.originalname,
     mediaType: file.mimetype,
     requestMediaType: isVideo ? 'video' : 'image',
+    byteSize: file.size,
+    multipartField: 'media',
   }
   log('sightengine_request', context)
 
@@ -152,12 +177,12 @@ export async function moderateMediaWithSightengine(file) {
     })
     log('sightengine_http_response', { ...context, httpStatus: response.status, contentType: response.headers?.['content-type'] })
     log('sightengine_raw_response', { ...context, httpStatus: response.status, payload: redactSecrets(response.data) }, response.status >= 400 ? 'error' : 'info')
-    const normalized = interpretSightengineHttpResponse(response.status, response.data)
+    const normalized = interpretSightengineHttpResponse(response.status, response.data, { mediaType: context.requestMediaType })
     log('sightengine_normalized_response', { ...context, normalized }, normalized.available ? 'info' : 'error')
     log('sightengine_final_decision', { ...context, decision: normalized }, normalized.available && normalized.safe ? 'info' : 'error')
     return normalized
   } catch (error) {
-    const normalized = normalizeSightengineRequestError(error)
+    const normalized = normalizeSightengineRequestError(error, { mediaType: context.requestMediaType })
     log('sightengine_http_response', { ...context, httpStatus: error.response?.status ?? null, requestError: { name: error.name, code: error.code, message: error.message } }, 'error')
     log('sightengine_raw_response', { ...context, httpStatus: error.response?.status ?? null, payload: redactSecrets(error.response?.data ?? null) }, 'error')
     log('sightengine_normalized_response', { ...context, normalized }, 'error')

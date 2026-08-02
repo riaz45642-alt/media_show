@@ -47,6 +47,11 @@ export function combineModerationDecisions(sightengineResult, aiResult) {
 }
 
 async function runHybridModeration(file) {
+  console.info(JSON.stringify({
+    level: 'info', event: 'media_moderation_started', fileName: file.originalname,
+    mediaType: file.mimetype, byteSize: file.size,
+    pipeline: file.mimetype.startsWith('video/') ? 'sightengine_video_then_gemini_native_video' : 'sightengine_image_then_gemini_image',
+  }))
   const sightengineResult = await moderateMediaWithSightengine(file)
   if (!shouldRunSecondAiCheck(sightengineResult)) return combineModerationDecisions(sightengineResult, null)
 
@@ -59,6 +64,11 @@ async function runHybridModeration(file) {
   let aiResult
   try {
     const base64 = (await fs.readFile(file.path)).toString('base64')
+    console.info(JSON.stringify({
+      level: 'info', event: 'gemini_native_media_request', fileName: file.originalname,
+      mediaType: file.mimetype, requestMediaType: file.mimetype.startsWith('video/') ? 'native_video' : 'image',
+      byteSize: file.size,
+    }))
     aiResult = await analyzeChildIntimacyWithGemini({ base64, mimeType: file.mimetype })
   } catch (error) {
     aiResult = { available: false, safe: null, confidence: null, categories: [], reason: 'second_ai_check_failed' }
