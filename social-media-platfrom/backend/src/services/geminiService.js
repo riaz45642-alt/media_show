@@ -110,6 +110,47 @@ const MEDIA_MODERATION_SCHEMA = {
   },
 }
 
+const CHILD_INTIMACY_SYSTEM_INSTRUCTION = `You are a strict visual safety classifier for a social platform used by children.
+Inspect the supplied image or video and determine whether it visibly contains kissing, making out, romantic intimacy, intimate couples, bedroom scenes, seductive posing, lingerie focus, bikini focus, sexually suggestive behavior, or explicit romance.
+Set safe=false when any of those child-inappropriate intimacy categories are visibly present. Do not infer intimacy from ordinary friends, family members, neutral portraits, normal clothing, sports, scenery, or people merely standing together.
+Return ONLY JSON with exactly these fields: safe (boolean), reason (string), confidence (number from 0 to 1). Confidence is confidence in the unsafe finding.`
+
+const CHILD_INTIMACY_SCHEMA = {
+  type: 'OBJECT',
+  required: ['safe', 'reason', 'confidence'],
+  properties: {
+    safe: { type: 'BOOLEAN' },
+    reason: { type: 'STRING' },
+    confidence: { type: 'NUMBER', minimum: 0, maximum: 1 },
+  },
+}
+
+export function parseChildIntimacyJson(text) {
+  const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+  if (typeof parsed.safe !== 'boolean') throw new TypeError('Gemini intimacy response safe must be boolean')
+  if (!Number.isFinite(Number(parsed.confidence))) throw new TypeError('Gemini intimacy response confidence must be numeric')
+  return {
+    available: true,
+    safe: parsed.safe,
+    reason: String(parsed.reason || ''),
+    confidence: Math.max(0, Math.min(1, Number(parsed.confidence))),
+    categories: [],
+  }
+}
+
+export function decideChildIntimacyModeration(parsed) {
+  if (!parsed?.available) return parsed
+  const reject = parsed.safe === false && parsed.confidence >= 0.60
+  return {
+    ...parsed,
+    safe: !reject,
+    reason: reject ? (parsed.reason || 'Romantic or sexually suggestive intimacy detected.') : '',
+    categories: reject ? ['romantic_intimacy'] : [],
+    modelSafe: parsed.safe,
+    decisionReason: reject ? `child_intimacy_at_${parsed.confidence}` : `child_intimacy_allowed_at_${parsed.confidence}`,
+  }
+}
+
 const SAFETY_SETTINGS = [
   'HARM_CATEGORY_HARASSMENT',
   'HARM_CATEGORY_HATE_SPEECH',
@@ -311,21 +352,26 @@ export function decideMediaModeration(parsed) {
   }
 }
 
-async function callGeminiMedia(parts, timeoutMs = 15000) {
+async function callGeminiMedia(parts, timeoutMs = 15000, options = {}) {
   if (!GEMINI_API_KEY) return unavailableMediaResult('gemini_api_key_not_configured')
+  const systemInstruction = options.systemInstruction || MEDIA_SYSTEM_INSTRUCTION
+  const responseSchema = options.responseSchema || MEDIA_MODERATION_SCHEMA
+  const parseResponse = options.parseResponse || parseMediaJson
+  const decideResponse = options.decideResponse || decideMediaModeration
+  const logScope = options.logScope || 'media'
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
       const response = await postGemini({
-          system_instruction: { parts: [{ text: MEDIA_SYSTEM_INSTRUCTION }] },
+          system_instruction: { parts: [{ text: systemInstruction }] },
           contents: [{ role: 'user', parts }],
           safetySettings: MEDIA_SAFETY_SETTINGS,
           generationConfig: {
             temperature: 0,
             responseMimeType: 'application/json',
-            responseSchema: MEDIA_MODERATION_SCHEMA,
+            responseSchema,
             maxOutputTokens: 500,
           },
         }, controller.signal)
@@ -337,7 +383,7 @@ async function callGeminiMedia(parts, timeoutMs = 15000) {
         return unavailableMediaResult(`gemini_http_${response.status}`)
       }
       const data = await response.json()
-      console.info(JSON.stringify({ level: 'info', event: 'gemini_media_raw_response', model: resolvedModel, attempt, response: data }))
+      console.info(JSON.stringify({ level: 'info', event: `gemini_${logScope}_raw_response`, model: resolvedModel, attempt, response: data }))
       if (data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason === 'SAFETY') {
         const reason = `gemini_safety_block_${data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason}`
         console.warn(JSON.stringify({ level: 'warn', event: 'gemini_media_unstructured_safety_block', model: resolvedModel, reason, safetyRatings: data?.promptFeedback?.safetyRatings || data?.candidates?.[0]?.safetyRatings || [] }))
@@ -346,10 +392,10 @@ async function callGeminiMedia(parts, timeoutMs = 15000) {
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
       if (!text) return unavailableMediaResult('gemini_empty_response')
       try {
-        const parsed = parseMediaJson(text)
-        console.info(JSON.stringify({ level: 'info', event: 'gemini_media_parsed_response', model: resolvedModel, parsed }))
-        const decision = decideMediaModeration(parsed)
-        console.info(JSON.stringify({ level: 'info', event: 'gemini_media_final_decision', model: resolvedModel, decision }))
+        const parsed = parseResponse(text)
+        console.info(JSON.stringify({ level: 'info', event: `gemini_${logScope}_parsed_response`, model: resolvedModel, parsed }))
+        const decision = decideResponse(parsed)
+        console.info(JSON.stringify({ level: 'info', event: `gemini_${logScope}_final_decision`, model: resolvedModel, decision }))
         return decision
       } catch (parseError) {
         console.error(JSON.stringify({ level: 'error', event: 'gemini_media_parse_failed', model: resolvedModel, rawText: text, error: { name: parseError.name, message: parseError.message, stack: parseError.stack } }))
@@ -393,6 +439,21 @@ export async function analyzeMediaFrameWithGemini({ base64, mimeType = 'image/jp
     { text: 'Analyze this uploaded image or video for strict child-safety. Pay special attention to kissing, making out, romantic or adult intimacy, bedroom scenes, lingerie or bikini focus, and sexual or seductive poses.' },
     { inline_data: { mime_type: mimeType, data: base64 } },
   ])
+}
+
+/** Dedicated second-stage child-intimacy check for a complete image or video. */
+export async function analyzeChildIntimacyWithGemini({ base64, mimeType = 'image/jpeg' } = {}) {
+  if (!base64) return unavailableMediaResult('no_media_data')
+  return callGeminiMedia([
+    { text: 'Classify this media using the child-intimacy policy. Return only safe, reason, and confidence.' },
+    { inline_data: { mime_type: mimeType, data: base64 } },
+  ], mimeType.startsWith('video/') ? 120000 : 20000, {
+    systemInstruction: CHILD_INTIMACY_SYSTEM_INSTRUCTION,
+    responseSchema: CHILD_INTIMACY_SCHEMA,
+    parseResponse: parseChildIntimacyJson,
+    decideResponse: decideChildIntimacyModeration,
+    logScope: 'child_intimacy',
+  })
 }
 
 export { CATEGORIES as GEMINI_CATEGORIES }

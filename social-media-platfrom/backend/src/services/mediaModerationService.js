@@ -1,21 +1,13 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import { moderateMediaWithSightengine, SIGHTENGINE_REJECTION_THRESHOLD } from './sightengineService.js'
-import { analyzeMediaFrameWithGemini } from './geminiService.js'
+import { analyzeChildIntimacyWithGemini } from './geminiService.js'
 
 const CACHE_TTL_MS = Number(process.env.MEDIA_MODERATION_CACHE_TTL_MS || 24 * 60 * 60 * 1000)
 const CACHE_MAX_ENTRIES = Number(process.env.MEDIA_MODERATION_CACHE_MAX_ENTRIES || 500)
 const decisionCache = new Map()
-const SECOND_AI_NEAR_THRESHOLD_MARGIN = 0.15
-
-const secondAiEnabled = () => String(process.env.ENABLE_SECOND_AI_CHECK || '').toLowerCase() === 'true'
-const secondAiProvider = () => String(process.env.SECOND_AI_PROVIDER || 'gemini').trim().toLowerCase()
-
 export function shouldRunSecondAiCheck(sightengineResult) {
-  if (!secondAiEnabled() || secondAiProvider() !== 'gemini') return false
-  if (!sightengineResult?.available || !sightengineResult.safe) return false
-  const nearThresholdFloor = Math.max(0, SIGHTENGINE_REJECTION_THRESHOLD - SECOND_AI_NEAR_THRESHOLD_MARGIN)
-  return Number(sightengineResult.confidence) >= nearThresholdFloor
+  return Boolean(sightengineResult?.available && sightengineResult.safe)
 }
 
 export function combineModerationDecisions(sightengineResult, aiResult) {
@@ -67,7 +59,7 @@ async function runHybridModeration(file) {
   let aiResult
   try {
     const base64 = (await fs.readFile(file.path)).toString('base64')
-    aiResult = await analyzeMediaFrameWithGemini({ base64, mimeType: file.mimetype })
+    aiResult = await analyzeChildIntimacyWithGemini({ base64, mimeType: file.mimetype })
   } catch (error) {
     aiResult = { available: false, safe: null, confidence: null, categories: [], reason: 'second_ai_check_failed' }
     console.error(JSON.stringify({
@@ -83,6 +75,14 @@ async function runHybridModeration(file) {
     aiAvailable: Boolean(aiResult.available), aiSafe: aiResult.safe,
     aiConfidence: aiResult.confidence, rejectedBy: finalResult.rejectedBy,
     finalSafe: finalResult.safe,
+  }))
+  console.info(JSON.stringify({
+    level: 'info', event: 'hybrid_moderation_final_decision',
+    fileName: file.originalname, mediaType: file.mimetype,
+    sightengineScore: sightengineResult.confidence,
+    geminiResult: aiResult,
+    finalDecision: { safe: finalResult.safe, confidence: finalResult.confidence, reason: finalResult.reason },
+    rejectedBy: finalResult.rejectedBy || null,
   }))
   return finalResult
 }

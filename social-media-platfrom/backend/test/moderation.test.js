@@ -6,7 +6,13 @@ import {
   PERSISTED_MODERATION_STATUSES,
   validateModerationDecision,
 } from '../src/services/moderationService.js'
-import { decideMediaModeration, parseMediaJson, unavailableMediaResult } from '../src/services/geminiService.js'
+import {
+  decideChildIntimacyModeration,
+  decideMediaModeration,
+  parseChildIntimacyJson,
+  parseMediaJson,
+  unavailableMediaResult,
+} from '../src/services/geminiService.js'
 import {
   interpretSightengineHttpResponse,
   normalizeSightengineRequestError,
@@ -139,18 +145,24 @@ test('Sightengine blocks suggestive child-sensitive classes at the strict thresh
   }
 })
 
-test('near-threshold safe Sightengine results are routed to Gemini only when enabled', () => {
-  const previousEnabled = process.env.ENABLE_SECOND_AI_CHECK
-  const previousProvider = process.env.SECOND_AI_PROVIDER
-  process.env.ENABLE_SECOND_AI_CHECK = 'true'
-  process.env.SECOND_AI_PROVIDER = 'gemini'
+test('every Sightengine-safe result is routed to Gemini', () => {
   assert.equal(shouldRunSecondAiCheck({ available: true, safe: true, confidence: 0.25 }), true)
-  assert.equal(shouldRunSecondAiCheck({ available: true, safe: true, confidence: 0.05 }), false)
+  assert.equal(shouldRunSecondAiCheck({ available: true, safe: true, confidence: 0.05 }), true)
   assert.equal(shouldRunSecondAiCheck({ available: true, safe: false, confidence: 0.5 }), false)
-  if (previousEnabled === undefined) delete process.env.ENABLE_SECOND_AI_CHECK
-  else process.env.ENABLE_SECOND_AI_CHECK = previousEnabled
-  if (previousProvider === undefined) delete process.env.SECOND_AI_PROVIDER
-  else process.env.SECOND_AI_PROVIDER = previousProvider
+})
+
+test('Gemini child-intimacy response uses the strict three-field provider schema', () => {
+  const parsed = parseChildIntimacyJson('{"safe":false,"reason":"romantic kissing","confidence":0.82}')
+  assert.equal(parsed.available, true)
+  assert.equal(parsed.safe, false)
+  assert.equal(parsed.confidence, 0.82)
+})
+
+test('Gemini child-intimacy decision rejects only at confidence 0.60 or above', () => {
+  assert.equal(decideChildIntimacyModeration({ available: true, safe: false, reason: 'kiss', confidence: 0.59, categories: [] }).safe, true)
+  const rejected = decideChildIntimacyModeration({ available: true, safe: false, reason: 'kiss', confidence: 0.60, categories: [] })
+  assert.equal(rejected.safe, false)
+  assert.deepEqual(rejected.categories, ['romantic_intimacy'])
 })
 
 test('AI Vision can reject near-threshold child-inappropriate intimacy', () => {
