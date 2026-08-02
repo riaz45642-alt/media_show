@@ -5,6 +5,13 @@ import { playNotificationTone, requestNotificationPermission, showBrowserNotific
 
 const NotificationsContext = createContext(null)
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const PREFERENCES_KEY = 'mediashow_notification_preferences'
+const CATEGORY_BY_KIND = {
+  like: 'likes', reaction: 'likes', comment: 'comments', follow: 'follows', friend_request: 'follows',
+  message: 'messages', incoming_call: 'calls', missed_call: 'calls', call_declined: 'calls',
+  mention: 'mentions', story: 'stories', moderation: 'system', appeal: 'system', report: 'system',
+  verification: 'system', security: 'system', system: 'system',
+}
 
 async function request(path, options = {}) {
   const token = localStorage.getItem('mediashow_token')
@@ -20,7 +27,7 @@ async function request(path, options = {}) {
 const normalize = (item) => ({
   ...item,
   type: item.kind,
-  category: item.kind,
+  category: CATEGORY_BY_KIND[item.kind] || 'system',
   text: item.body || item.title,
   time: new Date(item.created_at).toLocaleString(),
   read: Boolean(item.read_at),
@@ -31,13 +38,23 @@ export function NotificationsProvider({ children }) {
   const [items, setItems] = useState([])
   const [toasts, setToasts] = useState([])
   const [notificationPermission, setNotificationPermission] = useState(() => 'Notification' in window ? Notification.permission : 'unsupported')
+  const [preferences, setPreferences] = useState({})
 
   const refresh = useCallback(async () => {
     if (!user) return setItems([])
     try { setItems((await request('/notifications')).map(normalize)) } catch { setItems([]) }
   }, [user])
 
-  useEffect(() => { refresh() }, [refresh])
+  const refreshPreferences = useCallback(async () => {
+    if (!user) return setPreferences({})
+    try {
+      const loaded = await request('/notifications/preferences')
+      setPreferences(loaded)
+      localStorage.setItem(PREFERENCES_KEY, JSON.stringify(loaded))
+    } catch { setPreferences({}) }
+  }, [user])
+
+  useEffect(() => { refresh(); refreshPreferences() }, [refresh, refreshPreferences])
 
   useEffect(() => {
     if (!user?.id) return undefined
@@ -54,6 +71,7 @@ export function NotificationsProvider({ children }) {
       }
     }
     const onIncomingCall = (raw) => {
+      if (preferences.enabled === false || preferences.calls === false) return
       const item = {
         id: `incoming-call-${raw.callId}`,
         kind: 'incoming_call', type: 'incoming_call', category: 'messages',
@@ -82,7 +100,7 @@ export function NotificationsProvider({ children }) {
       socket.off('call:ended', clearIncomingCall)
       socket.off('call:timeout', clearIncomingCall)
     }
-  }, [user?.id])
+  }, [user?.id, preferences.enabled, preferences.calls])
 
   const enableBrowserNotifications = async () => {
     const permission = await requestNotificationPermission()
@@ -102,6 +120,18 @@ export function NotificationsProvider({ children }) {
     setItems((previous) => previous.map((item) => item.entity_type === 'conversation' && item.entity_id === conversationId && item.kind === 'message' ? { ...item, read: true } : item))
     setToasts((previous) => previous.filter((item) => !(item.entity_type === 'conversation' && item.entity_id === conversationId && item.kind === 'message')))
   }, [])
+  const updatePreference = async (key, enabled) => {
+    const previous = preferences
+    setPreferences((current) => ({ ...current, [key]: enabled }))
+    try {
+      const updated = await request('/notifications/preferences', { method: 'PUT', body: JSON.stringify({ [key]: enabled }) })
+      setPreferences(updated)
+      localStorage.setItem(PREFERENCES_KEY, JSON.stringify(updated))
+    } catch (requestError) {
+      setPreferences(previous)
+      throw requestError
+    }
+  }
 
   const markAllRead = async () => {
     await request('/notifications/read-all', { method: 'POST' })
@@ -116,7 +146,7 @@ export function NotificationsProvider({ children }) {
     setItems((previous) => previous.map((item) => item.id === notificationId ? { ...item, read: true, accepted: true } : item))
   }
   const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items])
-  return <NotificationsContext.Provider value={{ items, setItems, unreadCount, markAllRead, markRead, dismissNotification, markConversationNotificationsRead, acceptFollowRequest, refresh, toasts, dismissToast, notificationPermission, enableBrowserNotifications }}>{children}</NotificationsContext.Provider>
+  return <NotificationsContext.Provider value={{ items, setItems, unreadCount, markAllRead, markRead, dismissNotification, markConversationNotificationsRead, acceptFollowRequest, refresh, toasts, dismissToast, notificationPermission, enableBrowserNotifications, preferences, updatePreference }}>{children}</NotificationsContext.Provider>
 }
 
 export const useNotifications = () => useContext(NotificationsContext)

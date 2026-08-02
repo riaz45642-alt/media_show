@@ -25,8 +25,7 @@ export async function signup(req, res, next) {
 
     const passwordHash = await bcrypt.hash(password, 12)
     const ageGroup = ageGroupFor(Number(age))
-    const usernameBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24) || 'member'
-    const username = `${usernameBase}_${crypto.randomUUID().slice(0, 6)}`
+    const username = `member_${crypto.randomUUID().slice(0, 10)}`
     const birthDate = new Date()
     birthDate.setUTCFullYear(birthDate.getUTCFullYear() - Number(age))
 
@@ -36,7 +35,7 @@ export async function signup(req, res, next) {
       await client.query('BEGIN')
       const { rows } = await client.query(
         `INSERT INTO users (email, password_hash) VALUES ($1, $2)
-         RETURNING id, email, role, status, created_at`,
+         RETURNING id, role, status, created_at`,
         [email.toLowerCase(), passwordHash]
       )
       user = rows[0]
@@ -73,7 +72,8 @@ export async function login(req, res, next) {
   try {
     const { email, password } = req.body
     const { rows } = await pool.query(
-      `SELECT u.*, p.display_name AS name, p.username, p.date_of_birth, p.age_group,
+      `SELECT u.id, u.password_hash, u.role, u.status, u.created_at,
+              p.display_name AS name, p.username, p.date_of_birth, p.age_group,
               p.bio, p.safe_zone_score, (s.profile_visibility <> 'public') AS is_private
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
@@ -107,7 +107,6 @@ export async function firebaseLogin(req, res, next) {
 
     const email = decoded.email.toLowerCase()
     const name = String(decoded.name || email.split('@')[0] || 'Member').trim().slice(0, 120)
-    const usernameBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24) || 'member'
     const client = await pool.connect()
     let userId
 
@@ -167,7 +166,7 @@ export async function firebaseLogin(req, res, next) {
         throw error
       }
 
-      const username = `${usernameBase}_${crypto.randomUUID().slice(0, 6)}`
+      const username = `member_${crypto.randomUUID().slice(0, 10)}`
       await client.query(
         `INSERT INTO user_profiles (user_id, username, display_name, age_group)
          VALUES ($1, $2, $3, 'adult')
@@ -192,7 +191,7 @@ export async function firebaseLogin(req, res, next) {
     }
 
     const { rows } = await pool.query(
-      `SELECT u.id, u.email, u.role, u.status, u.created_at,
+      `SELECT u.id, u.role, u.status, u.created_at,
               p.display_name AS name, p.username, p.date_of_birth, p.age_group,
               p.bio, p.safe_zone_score, $2::text AS avatar,
               (s.profile_visibility <> 'public') AS is_private

@@ -20,6 +20,7 @@ router.put(
     name: { type: 'string', minLength: 2, maxLength: 60 },
     username: { type: 'string', minLength: 3, maxLength: 30 },
     bio: { type: 'string', maxLength: 200 },
+    contactEmail: { type: 'string', email: true, maxLength: 160 },
     avatarUrl: { type: 'string', maxLength: 2000 },
     isPrivate: { type: 'boolean' },
   }),

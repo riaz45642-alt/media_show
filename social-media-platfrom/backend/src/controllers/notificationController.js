@@ -1,5 +1,11 @@
 import { pool } from '../config/db.js'
 
+const KINDS_BY_CATEGORY = {
+  likes: ['like', 'reaction'], comments: ['comment'], follows: ['follow', 'friend_request'],
+  messages: ['message'], calls: ['incoming_call', 'missed_call', 'call_declined'], mentions: ['mention'],
+  stories: ['story'], system: ['moderation', 'appeal', 'report', 'verification', 'security', 'system'],
+}
+
 // GET /api/notifications?category=moderation&unread=true&search=badge
 export async function listNotifications(req, res, next) {
   try {
@@ -8,8 +14,10 @@ export async function listNotifications(req, res, next) {
     let where = 'WHERE recipient_id = $1'
 
     if (category && category !== 'all') {
-      params.push(category)
-      where += ` AND kind = $${params.length}`
+      const kinds = KINDS_BY_CATEGORY[category]
+      if (!kinds) return res.status(400).json({ message: 'Unknown notification category' })
+      params.push(kinds)
+      where += ` AND kind::text = ANY($${params.length}::text[])`
     }
     if (unread === 'true') {
       where += ' AND read_at IS NULL'

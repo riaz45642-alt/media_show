@@ -45,7 +45,7 @@ export async function createComment(req, res, next) {
       ? await pool.query(`SELECT author_id FROM comments WHERE id = $1`, [parentCommentId])
       : await pool.query(`SELECT author_id FROM posts WHERE id = $1`, [postId])
     if (recipient.rows[0] && recipient.rows[0].author_id !== req.user.id) await createNotification({
-      userId: recipient.rows[0].author_id, actorId: req.user.id, category: 'comments', type: parentCommentId ? 'reply' : 'comment',
+      userId: recipient.rows[0].author_id, actorId: req.user.id, category: 'comments', type: 'comment',
       text: parentCommentId ? 'Someone replied to your comment' : 'Someone commented on your post', link: `/post/${postId}`,
       entityType: parentCommentId ? 'comment' : 'post', entityId: parentCommentId || postId,
     })

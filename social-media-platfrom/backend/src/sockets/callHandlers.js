@@ -19,7 +19,7 @@ export function startCallMaintenance(io) {
         await pool.query(`UPDATE call_sessions SET closed_at = COALESCE(closed_at, now()) WHERE call_id = $1`, [call.id])
         io.to(`user:${call.caller_id}`).emit('call:timeout', { callId: call.id })
         io.to(`user:${call.callee_id}`).emit('call:timeout', { callId: call.id })
-        await createNotification({ userId: call.callee_id, actorId: call.caller_id, category: 'messages', type: 'missed_call', text: `Missed ${call.kind} call`, link: '/calls', entityType: 'call', entityId: call.id, data: { callId: call.id, kind: call.kind } })
+        await createNotification({ userId: call.callee_id, actorId: call.caller_id, category: 'calls', type: 'missed_call', text: `Missed ${call.kind} call`, link: '/calls', entityType: 'call', entityId: call.id, data: { callId: call.id, kind: call.kind } })
       }
     } catch (error) { console.error('call maintenance failed:', { message: error.message, code: error.code, stack: error.stack }) }
   }
@@ -119,7 +119,7 @@ export function registerCallHandlers(io, socket) {
           io.to(`user:${userId}`).emit('call:timeout', { callId })
           io.to(`user:${calleeId}`).emit('call:timeout', { callId })
           await createNotification({
-            userId: calleeId, actorId: userId, category: 'messages', type: 'missed_call',
+            userId: calleeId, actorId: userId, category: 'calls', type: 'missed_call',
             text: `Missed ${kind} call`, link: '/calls', entityType: 'call', entityId: callId,
             data: { callId, kind },
           })
@@ -175,7 +175,7 @@ export function registerCallHandlers(io, socket) {
     await pool.query(`UPDATE call_sessions SET closed_at = now() WHERE call_id = $1`, [callId])
     io.to(`user:${rows[0].caller_id}`).emit('call:declined', { callId })
     io.to(`user:${rows[0].caller_id}`).emit('call:rejected', { callId })
-    await createNotification({ userId: rows[0].caller_id, actorId: userId, category: 'messages', type: 'call_declined', text: 'Your call was declined', link: '/calls', entityType: 'call', entityId: callId })
+    await createNotification({ userId: rows[0].caller_id, actorId: userId, category: 'calls', type: 'call_declined', text: 'Your call was declined', link: '/calls', entityType: 'call', entityId: callId })
   })
 
   socket.on('call:end', async ({ callId, reason = 'ended' }) => {

@@ -26,8 +26,7 @@ async function firebaseSession(firebaseUser, extraProfile = {}) {
     token: await firebaseUser.getIdToken(),
     user: {
       id: firebaseUser.uid,
-      name: firebaseUser.displayName || extraProfile.name || firebaseUser.email?.split('@')[0] || 'Member',
-      email: firebaseUser.email,
+      name: firebaseUser.displayName || extraProfile.name || 'Member',
       avatar: firebaseUser.photoURL || '',
       age: extraProfile.age ? Number(extraProfile.age) : null,
       safeZoneScore: 82,

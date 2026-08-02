@@ -27,7 +27,7 @@ export async function listQueue(req, res, next) {
     }
     if (!type || type === 'user') {
       const { rows } = await pool.query(
-        `SELECT id, name, email, moderation_status, risk_score, moderation_reason, status, warnings_count
+        `SELECT id, name, moderation_status, risk_score, moderation_reason, status, warnings_count
          FROM users WHERE moderation_status = $1 ORDER BY risk_score DESC LIMIT 100`,
         [status]
       )

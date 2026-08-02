@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Settings as SettingsIcon, Edit3, Award, Gauge, LogOut, Grid3x3, Bookmark, Plus, Lock, Phone } from 'lucide-react'
+import { Settings as SettingsIcon, Edit3, Award, Gauge, LogOut, Grid3x3, Bookmark, Plus, Lock, Phone, Mail } from 'lucide-react'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import ProfileGrid from '../components/profile/ProfileGrid'
@@ -19,10 +19,19 @@ export default function Profile() {
   const { myPosts, savedPosts } = usePosts()
   const { t } = useLanguage()
   const ageGroup = user ? getAgeGroup(user.age) : null
-  const score = user?.safeZoneScore ?? user?.safe_zone_score ?? 0
+  const [reputation, setReputation] = useState(null)
+  const score = reputation?.trustScore ?? 0
   const [tab, setTab] = useState('posts')
   const [createOpen, setCreateOpen] = useState(false)
   const [profile, setProfile] = useState(user)
+
+  useEffect(() => {
+    const token = localStorage.getItem('mediashow_token')
+    fetch(`${API_URL}/users/me/reputation`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then(setReputation)
+      .catch(() => setReputation(null))
+  }, [])
 
   useEffect(() => {
     const token = localStorage.getItem('mediashow_token')
@@ -55,6 +64,7 @@ export default function Profile() {
         </h2>
         <p className="text-sm text-gray-500 dark:text-gray-400">@{profile?.username}</p>
         {profile?.bio && <p className="mx-auto mt-3 max-w-md whitespace-pre-line text-sm text-gray-600 dark:text-gray-300">{profile.bio}</p>}
+        {profile?.contact_email && <a href={`mailto:${profile.contact_email}`} className="mx-auto mt-2 flex w-fit items-center gap-1 text-sm text-primary hover:underline"><Mail size={13} />{profile.contact_email}</a>}
         {ageGroup && (
           <span className="mt-2 inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
             {AGE_GROUP_LABEL[ageGroup]}
@@ -66,7 +76,7 @@ export default function Profile() {
           </span>
         )}
         <div className="mt-2.5 flex justify-center">
-          <TrustBadge />
+          {reputation && <TrustBadge reputation={reputation} />}
         </div>
 
         <div className="mt-4 flex items-center justify-center gap-6">
@@ -104,7 +114,7 @@ export default function Profile() {
         </div>
         <div className="soft-card p-4 text-center">
           <Award size={20} className="mx-auto text-accent-dark" />
-          <p className="mt-2 text-xl font-bold text-gray-800 dark:text-gray-100">{user?.badges?.length ?? 0}</p>
+          <p className="mt-2 text-xl font-bold text-gray-800 dark:text-gray-100">{reputation?.badges?.length ?? 0}</p>
           <p className="text-xs text-gray-500 dark:text-gray-400">{t('badges_earned')}</p>
         </div>
       </div>
@@ -112,11 +122,15 @@ export default function Profile() {
       <div className="mt-5 soft-card p-4">
         <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">{t('your_badges')}</p>
         <div className="flex flex-wrap gap-2">
-          {(user?.badges?.length ? user.badges : ['Newcomer', 'Kind Heart', 'Curious Mind']).map((b) => (
-            <span key={b} className="rounded-full bg-accent/15 px-3 py-1.5 text-xs font-semibold text-accent-dark">
+          {(reputation?.badges || []).map((badge) => {
+            const b = badge.label
+            return (
+            <span key={badge.key} className="rounded-full bg-accent/15 px-3 py-1.5 text-xs font-semibold text-accent-dark">
               🏅 {b}
             </span>
-          ))}
+            )
+          })}
+          {!reputation && <span className="text-xs text-gray-400">Score unavailable</span>}
         </div>
       </div>
 

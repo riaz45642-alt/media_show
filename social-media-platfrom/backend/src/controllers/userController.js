@@ -34,7 +34,7 @@ export async function searchUsers(req, res, next) {
 export async function getUserProfile(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `SELECT u.id, p.display_name AS name, p.username, p.bio, p.age_group,
+      `SELECT u.id, p.display_name AS name, p.username, p.bio, p.contact_email, p.age_group,
               avatar.storage_path AS avatar_url,
               (s.profile_visibility <> 'public') AS is_private,
               s.messaging_enabled,
@@ -57,7 +57,7 @@ export async function getUserProfile(req, res, next) {
        LEFT JOIN follows f2 ON f2.follower_id = u.id
        LEFT JOIN posts po ON po.author_id = u.id AND po.deleted_at IS NULL AND po.moderation_status = 'safe'
        WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL
-       GROUP BY u.id, p.display_name, p.username, p.bio, p.age_group, avatar.storage_path,
+       GROUP BY u.id, p.display_name, p.username, p.bio, p.contact_email, p.age_group, avatar.storage_path,
                 s.profile_visibility, s.messaging_enabled, viewer_settings.messaging_enabled`,
       [req.params.id, req.user.id]
     )
@@ -257,8 +257,8 @@ export async function listConnections(req, res, next) {
 export async function getMe(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `SELECT u.id, p.display_name AS name, u.email, p.date_of_birth, p.age_group,
-              p.username, p.bio, p.safe_zone_score, u.role, u.status,
+      `SELECT u.id, p.display_name AS name, p.date_of_birth, p.age_group,
+              p.username, p.bio, p.contact_email, p.safe_zone_score, u.role, u.status,
               (s.profile_visibility <> 'public') AS is_private, s.messaging_enabled,
               (SELECT count(*)::int FROM follows WHERE followed_id = u.id) AS follower_count,
               (SELECT count(*)::int FROM follows WHERE follower_id = u.id) AS following_count,
@@ -277,19 +277,21 @@ export async function updateMe(req, res, next) {
   try {
     const { isPrivate } = req.body
     const currentResult = await pool.query(
-      `SELECT user_id AS id, display_name AS name, username, date_of_birth, age_group, bio
+      `SELECT user_id AS id, display_name AS name, username, date_of_birth, age_group, bio, contact_email
        FROM user_profiles WHERE user_id = $1::uuid`, [req.user.id]
     )
     const current = currentResult.rows[0]
     if (!current) return res.status(404).json({ message: 'Profile not found.' })
     const name = typeof req.body.name === 'string' ? req.body.name.trim() : null
     const bio = typeof req.body.bio === 'string' ? req.body.bio.trim() : null
+    const contactEmail = typeof req.body.contactEmail === 'string' ? req.body.contactEmail.trim().toLowerCase() : null
     const normalizedUsername = typeof req.body.username === 'string' && req.body.username.trim()
       ? req.body.username.trim().toLowerCase()
       : null
     const nameChanged = name !== null && name !== current.name
     const usernameChanged = normalizedUsername !== null && normalizedUsername.toLowerCase() !== String(current.username).toLowerCase()
     const bioChanged = bio !== null && bio !== (current.bio || '')
+    const contactEmailChanged = contactEmail !== null && contactEmail !== (current.contact_email || '')
 
     if (nameChanged) {
       const check = validateDisplayName(name)
@@ -316,10 +318,13 @@ export async function updateMe(req, res, next) {
     }
     const { rows } = await pool.query(
       `UPDATE user_profiles SET display_name = COALESCE($1, display_name),
-         username = COALESCE($2, username), bio = COALESCE($3, bio), updated_at = now()
-       WHERE user_id = $4
-       RETURNING user_id AS id, display_name AS name, username, date_of_birth, age_group, bio`,
-      [nameChanged ? name : null, usernameChanged ? normalizedUsername : null, bioChanged ? bio : null, req.user.id]
+         username = COALESCE($2, username), bio = COALESCE($3, bio),
+         contact_email = CASE WHEN $4::boolean THEN NULLIF($5::citext, '') ELSE contact_email END,
+         updated_at = now()
+       WHERE user_id = $6
+       RETURNING user_id AS id, display_name AS name, username, date_of_birth, age_group, bio, contact_email`,
+      [nameChanged ? name : null, usernameChanged ? normalizedUsername : null, bioChanged ? bio : null,
+        contactEmailChanged, contactEmail, req.user.id]
     )
     if (typeof isPrivate === 'boolean') {
       await pool.query(
@@ -391,12 +396,13 @@ export async function getReputation(req, res, next) {
     const trustScore = clamp(safety * 0.35 + community * 0.25 + moderation * 0.25 + activity * 0.15)
 
     const TIERS = [
-      { min: 90, key: 'trusted', label: 'Trusted User' },
-      { min: 75, key: 'helper', label: 'Community Helper' },
-      { min: 50, key: 'member', label: 'Member' },
-      { min: 0, key: 'new', label: 'New Member' },
+      { min: 90, key: 'platinum', label: 'Platinum' },
+      { min: 75, key: 'gold', label: 'Gold' },
+      { min: 60, key: 'silver', label: 'Silver' },
+      { min: 0, key: 'bronze', label: 'Bronze' },
     ]
     const tier = TIERS.find((t) => trustScore >= t.min) || TIERS[TIERS.length - 1]
+    const badges = [...TIERS].reverse().filter((badge) => trustScore >= badge.min).map(({ key, label }) => ({ key, label }))
 
     res.json({
       trustScore,
@@ -404,6 +410,7 @@ export async function getReputation(req, res, next) {
       reputationScore: community,
       communityScore: Math.round((community + moderation) / 2),
       tier,
+      badges,
       breakdown: { safety, community, moderation, activity },
       stats: { totalPosts: total, approved, rejected, reportsAgainst, appealsWon },
     })

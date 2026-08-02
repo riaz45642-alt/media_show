@@ -3,8 +3,8 @@ import { computeReputation } from '../../utils/reputation'
 
 // Compact trust/reputation badge for profiles & cards.
 // `signals` optionally overrides the mock model inputs; otherwise defaults are used.
-export default function TrustBadge({ signals, showScore = true, size = 'md' }) {
-  const { trustScore, tier } = computeReputation(signals)
+export default function TrustBadge({ signals, reputation, showScore = true, size = 'md' }) {
+  const { trustScore, tier } = reputation || computeReputation(signals)
   const pad = size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1 text-xs'
 
   return (

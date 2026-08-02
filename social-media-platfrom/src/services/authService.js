@@ -41,7 +41,9 @@ async function request(path, options = {}) {
 }
 
 function storeSession({ user, token }) {
-  const normalizedUser = { ...user, isPrivate: user.isPrivate ?? user.is_private ?? false }
+  const { email: _authenticationEmail, ...publicUser } = user
+  void _authenticationEmail
+  const normalizedUser = { ...publicUser, isPrivate: user.isPrivate ?? user.is_private ?? false }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedUser))
   if (token) localStorage.setItem(TOKEN_KEY, token)
   return normalizedUser
@@ -96,7 +98,10 @@ export function logout() {
 export function getStoredUser() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : null
+    if (!raw) return null
+    const { email: _authenticationEmail, ...user } = JSON.parse(raw)
+    if (_authenticationEmail !== undefined) localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+    return user
   } catch {
     return null
   }

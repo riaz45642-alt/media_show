@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, Grid3x3, Images, Lock, MessageCircle, ShieldCheck, User, UserCheck, UserPlus } from 'lucide-react'
+import { ChevronLeft, Grid3x3, Images, Lock, Mail, MessageCircle, ShieldCheck, User, UserCheck, UserPlus } from 'lucide-react'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import EmptyState from '../components/common/EmptyState'
@@ -134,6 +134,7 @@ export default function UserProfileView() {
         <h1 className="mt-3 font-display text-lg font-bold">{profile.name}</h1>
         <p className="text-sm text-gray-400">@{profile.username}</p>
         {profile.bio && <p className="mx-auto mt-3 max-w-md whitespace-pre-line text-sm text-gray-600 dark:text-gray-300">{profile.bio}</p>}
+        {profile.contact_email && <a href={`mailto:${profile.contact_email}`} className="mx-auto mt-2 flex w-fit items-center gap-1 text-sm text-primary hover:underline"><Mail size={13} />{profile.contact_email}</a>}
         <p className="mt-2 flex items-center justify-center gap-1 text-xs text-gray-400">{profile.is_private ? <><Lock size={12} /> Private account</> : <><ShieldCheck size={12} /> Public profile</>}</p>
         <div className="mt-5 flex justify-center gap-8">
           <div><p className="font-bold">{profile.post_count}</p><p className="text-xs text-gray-400">Posts</p></div>

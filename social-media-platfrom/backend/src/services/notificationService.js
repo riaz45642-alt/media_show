@@ -1,6 +1,10 @@
 import { pool } from '../config/db.js'
 import { getIO } from '../sockets/index.js'
 
+const PREFERENCE_KEY = {
+  followers: 'follows', moderation: 'system', appeals: 'system', reports: 'system', security: 'system',
+}
+
 // Internal helper: insert a notification row for a user, respecting their
 // per-category preferences. Never throws — a failed notification should
 // never break the primary action (moderation decision, appeal, etc.).
@@ -9,7 +13,8 @@ export async function createNotification({ userId, actorId = null, category, typ
   try {
     const { rows } = await pool.query('SELECT notification_preferences FROM user_settings WHERE user_id = $1', [userId])
     const prefs = rows[0]?.notification_preferences
-    if (prefs && prefs[category] === false) return null
+    const preferenceKey = PREFERENCE_KEY[category] || category
+    if (prefs && (prefs.enabled === false || prefs[preferenceKey] === false)) return null
 
     const { rows: inserted } = await pool.query(
       `INSERT INTO notifications (recipient_id, actor_id, kind, entity_type, entity_id, title, body, link, data)

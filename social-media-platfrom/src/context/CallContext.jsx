@@ -272,7 +272,12 @@ export function CallProvider({ children }) {
         }
         otherUserIdRef.current = payload.callerId
         startRingtone()
-        showBrowserNotification({ title: 'Incoming call', body: `${payload.callerName || 'Someone'} is calling you.`, link: '/messages', tag: `call-${payload.callId}` })
+        let callAlertsEnabled = true
+        try {
+          const preferences = JSON.parse(localStorage.getItem('mediashow_notification_preferences') || '{}')
+          callAlertsEnabled = preferences.enabled !== false && preferences.calls !== false
+        } catch { /* use enabled default */ }
+        if (callAlertsEnabled) showBrowserNotification({ title: 'Incoming call', body: `${payload.callerName || 'Someone'} is calling you.`, link: '/messages', tag: `call-${payload.callId}` })
         return { phase: 'incoming', callId: payload.callId, roomId: payload.roomId, kind: payload.kind, otherUserId: payload.callerId, otherUserName: payload.callerName, otherUserAvatar: payload.callerAvatar }
       })
     }

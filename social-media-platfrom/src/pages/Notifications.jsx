@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import EmptyState from '../components/common/EmptyState'
-import { NOTIFICATION_CATEGORIES } from '../data/notifications'
+import { NOTIFICATION_CATEGORIES, NOTIFICATION_PREFERENCES } from '../data/notifications'
 import { useNotifications } from '../context/NotificationsContext'
 
 const ICONS = {
@@ -25,36 +25,20 @@ const ICONS = {
   security: { icon: Lock, color: 'text-gray-600 bg-gray-100' },
 }
 
-const DEFAULT_PREFS = Object.fromEntries(NOTIFICATION_CATEGORIES.filter((c) => c.key !== 'all').map((c) => [c.key, true]))
-const PREFS_KEY = 'mediashow_notification_prefs'
-
 export default function Notifications() {
-  const { items, unreadCount, markAllRead, markRead, dismissNotification, acceptFollowRequest, notificationPermission, enableBrowserNotifications } = useNotifications()
+  const { items, unreadCount, markAllRead, markRead, dismissNotification, acceptFollowRequest, notificationPermission, enableBrowserNotifications, preferences, updatePreference } = useNotifications()
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [showPrefs, setShowPrefs] = useState(false)
-  const [prefs, setPrefs] = useState(() => {
-    try {
-      return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(PREFS_KEY)) }
-    } catch {
-      return DEFAULT_PREFS
-    }
-  })
-
-  const togglePref = (key) => {
-    setPrefs((prev) => {
-      const next = { ...prev, [key]: !prev[key] }
-      localStorage.setItem(PREFS_KEY, JSON.stringify(next))
-      return next
-    })
-  }
-
   const filtered = useMemo(() => {
     let list = filter === 'all' ? items : items.filter((n) => n.category === filter)
-    list = list.filter((n) => prefs[n.category] !== false)
     if (query.trim()) list = list.filter((n) => n.text.toLowerCase().includes(query.trim().toLowerCase()))
     return list
-  }, [items, filter, prefs, query])
+  }, [items, filter, query])
+  const unreadByCategory = useMemo(() => items.reduce((counts, item) => {
+    if (!item.read) counts[item.category] = (counts[item.category] || 0) + 1
+    return counts
+  }, {}), [items])
 
   return (
     <div>
@@ -101,13 +85,13 @@ export default function Notifications() {
         <div className="soft-card mb-4 p-4 animate-scaleIn">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Notification Preferences</p>
           <div className="space-y-2.5">
-            {NOTIFICATION_CATEGORIES.filter((c) => c.key !== 'all').map((c) => (
+            {NOTIFICATION_PREFERENCES.map((c) => (
               <label key={c.key} className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
                 {c.label}
                 <input
                   type="checkbox"
-                  checked={prefs[c.key] !== false}
-                  onChange={() => togglePref(c.key)}
+                  checked={preferences[c.key] !== false}
+                  onChange={(event) => updatePreference(c.key, event.target.checked).catch(() => {})}
                   className="h-4 w-4 accent-primary"
                 />
               </label>
@@ -127,7 +111,7 @@ export default function Notifications() {
                 : 'bg-white dark:bg-white/5 text-gray-500 dark:text-gray-300 shadow-card'
             }`}
           >
-            {c.label}
+            {c.label}{(c.key === 'all' ? unreadCount : unreadByCategory[c.key]) > 0 ? ` (${c.key === 'all' ? unreadCount : unreadByCategory[c.key]})` : ''}
           </button>
         ))}
       </div>

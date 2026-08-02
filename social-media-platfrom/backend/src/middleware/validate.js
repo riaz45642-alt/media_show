@@ -57,6 +57,9 @@ export function validateBody(rules) {
         }
         // Normalize whitespace-only / stray-spacing input in place.
         body[field] = trimmed
+        // Optional strings may be explicitly cleared. Format rules such as
+        // email only apply when a non-empty value is supplied.
+        if (!rule.required && trimmed === '') continue
       }
 
       if (rule.type === 'number') {

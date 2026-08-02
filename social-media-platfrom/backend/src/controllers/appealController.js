@@ -79,7 +79,7 @@ export async function adminListAppeals(req, res, next) {
       where = 'WHERE a.status = $1'
     }
     const { rows } = await pool.query(
-      `SELECT a.*, u.name AS user_name, u.email AS user_email
+      `SELECT a.*, u.name AS user_name
        FROM appeals a JOIN users u ON u.id = a.user_id
        ${where} ORDER BY a.created_at DESC LIMIT 200`,
       params
@@ -94,7 +94,7 @@ export async function adminListAppeals(req, res, next) {
 export async function adminGetAppeal(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `SELECT a.*, u.name AS user_name, u.email AS user_email FROM appeals a
+      `SELECT a.*, u.name AS user_name FROM appeals a
        JOIN users u ON u.id = a.user_id WHERE a.id = $1`,
       [req.params.id]
     )

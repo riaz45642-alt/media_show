@@ -135,7 +135,7 @@ export default function AdminModeration() {
   const rows = [
     ...queue.posts.map((p) => ({ ...p, type: 'post', preview: p.text_content })),
     ...queue.comments.map((c) => ({ ...c, type: 'comment', preview: c.text_content })),
-    ...queue.users.map((u) => ({ ...u, type: 'user', preview: `${u.name} <${u.email}>` })),
+    ...queue.users.map((u) => ({ ...u, type: 'user', preview: u.name })),
   ]
 
   return (
@@ -226,7 +226,7 @@ export default function AdminModeration() {
               <div key={a.id} className="rounded-xl border p-3">
                 <div className="mb-1 flex items-center justify-between text-xs text-neutral-500">
                   <span className="flex items-center gap-1 uppercase tracking-wide"><Scale size={12} /> {a.content_type}</span>
-                  <span>{a.user_name} &lt;{a.user_email}&gt;</span>
+                  <span>{a.user_name}</span>
                 </div>
                 <p className="mb-1 text-xs text-neutral-500">
                   Original status: <strong>{a.original_status}</strong> · Review score: {a.risk_score ?? 0}

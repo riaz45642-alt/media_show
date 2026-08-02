@@ -71,7 +71,7 @@ export async function sendMessage(req, res, next) {
     const { rows: groupRows } = await pool.query(`SELECT name FROM groups WHERE id = $1`, [req.params.groupId])
     const { rows: members } = await pool.query(`SELECT user_id FROM group_members WHERE group_id = $1 AND user_id <> $2`, [req.params.groupId, req.user.id])
     await Promise.all(members.map(({ user_id }) => createNotification({
-      userId: user_id, actorId: req.user.id, category: 'messages', type: 'group_message',
+      userId: user_id, actorId: req.user.id, category: 'messages', type: 'message',
       text: `${senderRows[0]?.display_name || 'A member'} in ${groupRows[0]?.name || 'a group'}: ${(body || 'Shared media').slice(0, 100)}`,
       link: `/groups/${req.params.groupId}`, entityType: 'group', entityId: req.params.groupId,
       data: { groupId: req.params.groupId, groupName: groupRows[0]?.name, messageId: message.id },

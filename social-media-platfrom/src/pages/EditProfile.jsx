@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Camera, User, AtSign, FileText } from 'lucide-react'
+import { Camera, User, AtSign, FileText, Mail } from 'lucide-react'
 import PageHeader from '../components/common/PageHeader'
 import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
@@ -16,11 +16,12 @@ export default function EditProfile() {
     name: user?.name || '',
     username: user?.username || '',
     bio: user?.bio || '',
+    contactEmail: user?.contact_email || '',
   })
   const [avatarPreview, setAvatarPreview] = useState(user?.avatar || '')
   const [saved, setSaved] = useState(false)
   const [blockedTerms, setBlockedTerms] = useState([])
-  const initialProfile = useRef({ name: user?.name || '', username: user?.username || '', bio: user?.bio || '' })
+  const initialProfile = useRef({ name: user?.name || '', username: user?.username || '', bio: user?.bio || '', contactEmail: user?.contact_email || '' })
 
   useEffect(() => {
     const token = localStorage.getItem('mediashow_token')
@@ -29,7 +30,7 @@ export default function EditProfile() {
     }).then(async (response) => {
       if (!response.ok) return
       const profile = await response.json()
-      const hydrated = { name: profile.name || '', username: profile.username || '', bio: profile.bio || '' }
+      const hydrated = { name: profile.name || '', username: profile.username || '', bio: profile.bio || '', contactEmail: profile.contact_email || '' }
       initialProfile.current = hydrated
       setForm(hydrated)
       setAvatarPreview(profile.avatar_url || user?.avatar || '')
@@ -58,7 +59,7 @@ export default function EditProfile() {
     if (blocked.length) return
     setError('')
     const token = localStorage.getItem('mediashow_token')
-    const normalized = { name: form.name.trim(), username: form.username.trim().toLowerCase(), bio: form.bio.trim() }
+    const normalized = { name: form.name.trim(), username: form.username.trim().toLowerCase(), bio: form.bio.trim(), contactEmail: form.contactEmail.trim().toLowerCase() }
     const patch = Object.fromEntries(Object.entries(normalized).filter(([key, value]) => value !== initialProfile.current[key]))
     const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/users/me`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -103,6 +104,17 @@ export default function EditProfile() {
           maxLength={200}
         />
         <p className="text-right text-xs text-gray-400">{form.bio.length}/200</p>
+        <Input
+          label="Contact Email (optional)"
+          icon={Mail}
+          type="email"
+          name="contactEmail"
+          placeholder="Only shown if you add it"
+          value={form.contactEmail}
+          onChange={handleChange}
+          maxLength={160}
+        />
+        <p className="text-xs text-gray-400">Your login email is private. This separate address is shown publicly only if you enter it.</p>
         <ContentFilterWarning matches={blockedTerms} />
         {error && <p className="text-sm text-red-500">{error}</p>}
 
