@@ -1,6 +1,6 @@
 import { pool } from '../config/db.js'
-import { getIO } from '../sockets/index.js'
 import { createNotification } from '../services/notificationService.js'
+import { emitToCurrentGroupMembers } from '../services/groupRealtimeService.js'
 
 async function getGroupConversation(groupId) {
   const { rows } = await pool.query(`SELECT id AS group_id, conversation_id FROM groups WHERE id = $1 AND deleted_at IS NULL`, [groupId])
@@ -66,7 +66,7 @@ export async function sendMessage(req, res, next) {
 
     const { rows: senderRows } = await pool.query(`SELECT display_name FROM user_profiles WHERE user_id = $1`, [req.user.id])
     const payload = { ...message, sender_name: senderRows[0]?.display_name, file_url: fileUrl || null, file_name: fileName || null, file_type: fileType || null }
-    getIO().to(`group:${req.params.groupId}`).emit('group:message', payload)
+    await emitToCurrentGroupMembers(req.params.groupId, 'group:message', payload)
 
     const { rows: groupRows } = await pool.query(`SELECT name FROM groups WHERE id = $1`, [req.params.groupId])
     const { rows: members } = await pool.query(`SELECT user_id FROM group_members WHERE group_id = $1 AND user_id <> $2`, [req.params.groupId, req.user.id])
@@ -91,7 +91,7 @@ export async function deleteMessage(req, res, next) {
       return res.status(403).json({ message: 'You can only delete your own messages' })
     }
     await pool.query(`UPDATE messages SET deleted_at = now(), body = NULL WHERE id = $1`, [req.params.messageId])
-    getIO().to(`group:${req.params.groupId}`).emit('group:message-deleted', { messageId: req.params.messageId })
+    await emitToCurrentGroupMembers(req.params.groupId, 'group:message-deleted', { messageId: req.params.messageId })
     res.json({ message: 'Message deleted' })
   } catch (err) {
     next(err)
@@ -123,7 +123,7 @@ export async function pinMessage(req, res, next) {
       `INSERT INTO group_pinned_messages (group_id, message_id, pinned_by) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
       [req.params.groupId, req.params.messageId, req.user.id]
     )
-    getIO().to(`group:${req.params.groupId}`).emit('group:message-pinned', { messageId: req.params.messageId })
+    await emitToCurrentGroupMembers(req.params.groupId, 'group:message-pinned', { messageId: req.params.messageId })
     res.json({ message: 'Message pinned' })
   } catch (err) {
     next(err)
@@ -134,7 +134,7 @@ export async function unpinMessage(req, res, next) {
   try {
     if (!['owner', 'admin'].includes(req.groupRole)) return res.status(403).json({ message: 'Only admins can unpin messages' })
     await pool.query(`DELETE FROM group_pinned_messages WHERE group_id = $1 AND message_id = $2`, [req.params.groupId, req.params.messageId])
-    getIO().to(`group:${req.params.groupId}`).emit('group:message-unpinned', { messageId: req.params.messageId })
+    await emitToCurrentGroupMembers(req.params.groupId, 'group:message-unpinned', { messageId: req.params.messageId })
     res.json({ message: 'Message unpinned' })
   } catch (err) {
     next(err)

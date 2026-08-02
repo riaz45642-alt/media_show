@@ -1,4 +1,5 @@
 import { pool } from '../config/db.js'
+import { emitToCurrentGroupMembers } from '../services/groupRealtimeService.js'
 
 async function isMember(groupId, userId) {
   const { rows } = await pool.query(
@@ -23,6 +24,6 @@ export function registerGroupHandlers(io, socket) {
 
   socket.on('group:typing', async ({ groupId, isTyping }) => {
     if (!(await isMember(groupId, userId))) return
-    socket.to(`group:${groupId}`).emit('group:typing', { groupId, userId, isTyping: !!isTyping })
+    await emitToCurrentGroupMembers(groupId, 'group:typing', { groupId, userId, isTyping: !!isTyping }, userId)
   })
 }

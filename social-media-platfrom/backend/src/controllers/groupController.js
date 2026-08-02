@@ -1,6 +1,7 @@
 import { pool } from '../config/db.js'
 import { createNotification } from '../services/notificationService.js'
 import { getIO } from '../sockets/index.js'
+import { emitToCurrentGroupMembers } from '../services/groupRealtimeService.js'
 
 function slugify(name) {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Math.random().toString(36).slice(2, 7)
@@ -19,14 +20,14 @@ async function notifyGroup(groupId, kind, title, body, link, excludeUserId) {
       [groupId, user_id, kind, title, body, link]
     )
   }
-  try {
-    getIO().to(`group:${groupId}`).emit('group:notification', { groupId, kind, title, body })
-  } catch { /* socket layer not ready yet, ignore */ }
+  try { await emitToCurrentGroupMembers(groupId, 'group:notification', { groupId, kind, title, body }, excludeUserId) }
+  catch { /* socket layer not ready yet, ignore */ }
 }
 
 export async function createGroup(req, res, next) {
   try {
-    const { name, description, category = 'general', privacy = 'public', isEducational = false, avatarUrl, coverUrl } = req.body
+    const { name, description, category = 'general', isEducational = false, avatarUrl, coverUrl } = req.body
+    const privacy = 'private'
     if (!name?.trim()) return res.status(400).json({ message: 'Group name is required' })
 
     const client = await pool.connect()
@@ -104,8 +105,9 @@ export async function deleteGroup(req, res, next) {
 export async function getGroup(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `SELECT g.*, (SELECT role FROM group_members WHERE group_id = g.id AND user_id = $2) AS my_role
-       FROM groups g WHERE g.id = $1 AND g.deleted_at IS NULL`,
+      `SELECT g.*, gm.role AS my_role
+       FROM groups g JOIN group_members gm ON gm.group_id = g.id AND gm.user_id = $2::uuid
+       WHERE g.id = $1::uuid AND g.deleted_at IS NULL`,
       [req.params.groupId, req.user.id]
     )
     if (!rows.length) return res.status(404).json({ message: 'Group not found' })
@@ -117,18 +119,17 @@ export async function getGroup(req, res, next) {
 
 export async function listGroups(req, res, next) {
   try {
-    const { search, category, mine } = req.query
-    const clauses = ['g.deleted_at IS NULL']
+    const { search, category } = req.query
+    const clauses = ['g.deleted_at IS NULL', 'gm.user_id = $1::uuid']
     const values = [req.user.id]
     let i = 2
-    if (mine === 'true') clauses.push(`EXISTS (SELECT 1 FROM group_members gm WHERE gm.group_id = g.id AND gm.user_id = $1)`)
-    else clauses.push(`(g.privacy = 'public' OR EXISTS (SELECT 1 FROM group_members gm WHERE gm.group_id = g.id AND gm.user_id = $1))`)
     if (search) { clauses.push(`lower(g.name) LIKE $${i}`); values.push(`%${search.toLowerCase()}%`); i++ }
     if (category) { clauses.push(`g.category = $${i}`); values.push(category); i++ }
 
     const { rows } = await pool.query(
-      `SELECT g.*, (SELECT role FROM group_members WHERE group_id = g.id AND user_id = $1) AS my_role
-       FROM groups g WHERE ${clauses.join(' AND ')} ORDER BY g.member_count DESC LIMIT 50`,
+      `SELECT g.*, gm.role AS my_role
+       FROM groups g JOIN group_members gm ON gm.group_id = g.id
+       WHERE ${clauses.join(' AND ')} ORDER BY g.member_count DESC LIMIT 50`,
       values
     )
     res.json(rows)
@@ -139,19 +140,9 @@ export async function listGroups(req, res, next) {
 
 // Suggested groups: public groups the user isn't in yet, biased toward
 // their existing categories, falling back to most popular.
-export async function suggestedGroups(req, res, next) {
+export async function suggestedGroups(_req, res, next) {
   try {
-    const { rows } = await pool.query(
-      `SELECT g.* FROM groups g
-       WHERE g.deleted_at IS NULL AND g.privacy = 'public'
-         AND NOT EXISTS (SELECT 1 FROM group_members gm WHERE gm.group_id = g.id AND gm.user_id = $1)
-       ORDER BY g.category IN (
-         SELECT category FROM groups gg JOIN group_members m ON m.group_id = gg.id WHERE m.user_id = $1
-       ) DESC, g.member_count DESC
-       LIMIT 10`,
-      [req.user.id]
-    )
-    res.json(rows)
+    res.json([])
   } catch (err) {
     next(err)
   }
@@ -159,6 +150,7 @@ export async function suggestedGroups(req, res, next) {
 
 export async function listMembers(req, res, next) {
   try {
+    if (!await getRole(req.params.groupId, req.user.id)) return res.status(403).json({ message: 'You are not a member of this group' })
     const { rows } = await pool.query(
       `SELECT gm.user_id, gm.role, gm.joined_at, up.display_name, up.avatar_media_id
        FROM group_members gm JOIN user_profiles up ON up.user_id = gm.user_id
@@ -242,27 +234,9 @@ export async function addMembers(req, res, next) {
 export async function joinOrRequest(req, res, next) {
   try {
     const groupId = req.params.groupId
-    const { rows } = await pool.query(`SELECT privacy, conversation_id FROM groups WHERE id = $1 AND deleted_at IS NULL`, [groupId])
-    if (!rows.length) return res.status(404).json({ message: 'Group not found' })
-    const group = rows[0]
-
     const existing = await getRole(groupId, req.user.id)
     if (existing) return res.status(409).json({ message: 'Already a member' })
-
-    if (group.privacy === 'public') {
-      await pool.query(`INSERT INTO group_members (group_id, user_id, role) VALUES ($1,$2,'member')`, [groupId, req.user.id])
-      await pool.query(`INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1,$2)`, [group.conversation_id, req.user.id])
-      await pool.query(`UPDATE groups SET member_count = member_count + 1 WHERE id = $1`, [groupId])
-      return res.status(201).json({ status: 'joined' })
-    }
-
-    const { rows: reqRows } = await pool.query(
-      `INSERT INTO group_join_requests (group_id, user_id, message) VALUES ($1,$2,$3)
-       ON CONFLICT (group_id, user_id) DO UPDATE SET status = 'pending', message = $3, created_at = now()
-       RETURNING *`,
-      [groupId, req.user.id, req.body?.message || null]
-    )
-    res.status(201).json({ status: 'pending', request: reqRows[0] })
+    res.status(403).json({ message: 'This group is invite-only. Ask an owner or admin to add you.' })
   } catch (err) {
     next(err)
   }
@@ -323,7 +297,7 @@ export async function inviteMember(req, res, next) {
     const groupId = req.params.groupId
     const { userId } = req.body
     const role = await getRole(groupId, req.user.id)
-    if (!role) return res.status(403).json({ message: 'Not authorized' })
+    if (!['owner', 'admin'].includes(role)) return res.status(403).json({ message: 'Only group owners and admins can invite members' })
 
     const { rows } = await pool.query(
       `INSERT INTO group_invitations (group_id, invited_user_id, invited_by) VALUES ($1,$2,$3)
@@ -372,6 +346,7 @@ export async function removeMember(req, res, next) {
     await pool.query(`DELETE FROM group_members WHERE group_id = $1 AND user_id = $2`, [groupId, userId])
     await pool.query(`DELETE FROM conversation_members WHERE conversation_id = $1 AND user_id = $2`, [g[0].conversation_id, userId])
     await pool.query(`UPDATE groups SET member_count = GREATEST(0, member_count - 1) WHERE id = $1`, [groupId])
+    getIO().in(`user:${userId}`).socketsLeave(`group:${groupId}`)
     res.json({ message: 'Member removed' })
   } catch (err) {
     next(err)
@@ -432,6 +407,7 @@ export async function leaveGroup(req, res, next) {
     await pool.query(`DELETE FROM group_members WHERE group_id = $1 AND user_id = $2`, [groupId, req.user.id])
     await pool.query(`DELETE FROM conversation_members WHERE conversation_id = $1 AND user_id = $2`, [g[0].conversation_id, req.user.id])
     await pool.query(`UPDATE groups SET member_count = GREATEST(0, member_count - 1) WHERE id = $1`, [groupId])
+    getIO().in(`user:${req.user.id}`).socketsLeave(`group:${groupId}`)
     res.json({ message: 'Left group' })
   } catch (err) {
     next(err)
@@ -457,6 +433,7 @@ export async function createAnnouncement(req, res, next) {
 
 export async function listAnnouncements(req, res, next) {
   try {
+    if (!await getRole(req.params.groupId, req.user.id)) return res.status(403).json({ message: 'You are not a member of this group' })
     const { rows } = await pool.query(`SELECT * FROM group_announcements WHERE group_id = $1 ORDER BY created_at DESC`, [req.params.groupId])
     res.json(rows)
   } catch (err) {
@@ -483,6 +460,7 @@ export async function createAssignment(req, res, next) {
 
 export async function listAssignments(req, res, next) {
   try {
+    if (!await getRole(req.params.groupId, req.user.id)) return res.status(403).json({ message: 'You are not a member of this group' })
     const { rows } = await pool.query(`SELECT * FROM group_assignments WHERE group_id = $1 ORDER BY due_at NULLS LAST, created_at DESC`, [req.params.groupId])
     res.json(rows)
   } catch (err) {

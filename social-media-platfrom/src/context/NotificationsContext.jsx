@@ -61,6 +61,7 @@ export function NotificationsProvider({ children }) {
     const socket = getSocket()
     if (!socket) return undefined
     const onNotification = (raw) => {
+      if (!raw?.recipient_id || String(raw.recipient_id) !== String(user.id)) return
       const item = normalize(raw)
       setItems((previous) => previous.some((entry) => entry.id === item.id) ? previous : [item, ...previous])
       const alreadyViewing = item.link && window.location.pathname === item.link

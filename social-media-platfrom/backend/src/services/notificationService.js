@@ -11,7 +11,12 @@ const PREFERENCE_KEY = {
 export async function createNotification({ userId, actorId = null, category, type, text, link, entityType = null, entityId = null, data = {} }) {
   if (!userId) return null
   try {
-    const { rows } = await pool.query('SELECT notification_preferences FROM user_settings WHERE user_id = $1', [userId])
+    const { rows } = await pool.query(
+      `SELECT s.notification_preferences FROM users u
+       JOIN user_settings s ON s.user_id = u.id
+       WHERE u.id = $1::uuid AND u.status = 'active' AND u.deleted_at IS NULL`, [userId]
+    )
+    if (!rows[0]) return null
     const prefs = rows[0]?.notification_preferences
     const preferenceKey = PREFERENCE_KEY[category] || category
     if (prefs && (prefs.enabled === false || prefs[preferenceKey] === false)) return null
@@ -22,8 +27,14 @@ export async function createNotification({ userId, actorId = null, category, typ
       [userId, actorId, type || category, entityType, entityId, text.slice(0, 160), text, link || null, JSON.stringify(data)]
     )
     const notification = inserted[0]
+    const recipientRoom = `user:${notification.recipient_id}`
     try {
-      getIO().to(`user:${userId}`).emit('notification:new', notification)
+      getIO().to(recipientRoom).emit('notification:new', notification)
+      console.info(JSON.stringify({
+        level: 'info', event: 'notification_targeted', notificationId: notification.id,
+        recipientId: notification.recipient_id, actorId: notification.actor_id,
+        kind: notification.kind, room: recipientRoom,
+      }))
     } catch {
       // Socket.IO is not available during migrations and isolated service tests.
     }

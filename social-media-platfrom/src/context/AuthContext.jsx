@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import * as authService from '../services/authService'
 import { getAgeGroup } from '../utils/ageGroup'
+import { disconnectSocket } from '../services/socketService'
 
 const AuthContext = createContext(null)
 
@@ -32,6 +33,7 @@ export function AuthProvider({ children }) {
   }
 
   const logout = () => {
+    disconnectSocket()
     authService.logout()
     setUser(null)
   }

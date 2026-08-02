@@ -5,6 +5,7 @@ import { endCallsForOfflineUser, registerCallHandlers, startCallMaintenance } fr
 import { registerGroupHandlers } from './groupHandlers.js'
 import { registerDirectChatHandlers } from './directChatHandlers.js'
 import { corsOriginCallback } from '../config/cors.js'
+import { pool } from '../config/db.js'
 
 let io
 
@@ -15,7 +16,7 @@ export function initSocket(httpServer) {
   })
   startCallMaintenance(io)
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.split(' ')[1]
       if (!token) return next(new Error('Not authenticated'))
@@ -23,6 +24,10 @@ export function initSocket(httpServer) {
       if (process.env.JWT_ISSUER) verifyOptions.issuer = process.env.JWT_ISSUER
       if (process.env.JWT_AUDIENCE) verifyOptions.audience = process.env.JWT_AUDIENCE
       const payload = jwt.verify(token, process.env.JWT_SECRET, verifyOptions)
+      const { rows } = await pool.query(
+        `SELECT id FROM users WHERE id = $1::uuid AND status = 'active' AND deleted_at IS NULL`, [payload.id]
+      )
+      if (!rows[0]) return next(new Error('Invalid or expired session'))
       socket.userId = payload.id
       next()
     } catch {
