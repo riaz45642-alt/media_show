@@ -118,12 +118,12 @@ export async function moderateUploadedFile(file) {
   } catch (error) {
     result = {
       available: false,
-      safe: false,
+      safe: null,
       reason: file.mimetype.startsWith('video/')
         ? 'Video could not be analyzed. Please use a valid MP4 or WebM file.'
         : 'Image could not be analyzed. Please use a valid supported image.',
       categories: [],
-      confidence: 0,
+      confidence: null,
     }
     console.error(JSON.stringify({
       level: 'error',

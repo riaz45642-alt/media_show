@@ -6,7 +6,7 @@ import {
   PERSISTED_MODERATION_STATUSES,
   validateModerationDecision,
 } from '../src/services/moderationService.js'
-import { decideMediaModeration, parseMediaJson } from '../src/services/geminiService.js'
+import { decideMediaModeration, parseMediaJson, unavailableMediaResult } from '../src/services/geminiService.js'
 
 test('ordinary greetings and names are not flagged by rules', () => {
   for (const text of ['Hello', 'Ahmed', 'Hi there', 'Good morning']) {
@@ -65,4 +65,13 @@ test('high-confidence explicit content is rejected', () => {
 
 test('invalid Gemini media payloads fail parsing instead of becoming adult content', () => {
   assert.throws(() => parseMediaJson('{"reason":"unknown","categories":[]}'), /safe must be boolean/)
+})
+
+test('quota, timeout, and provider failures are unavailable rather than unsafe', () => {
+  for (const reason of ['gemini_http_429', 'gemini_timeout', 'gemini_call_failed', 'gemini_http_503']) {
+    const result = unavailableMediaResult(reason)
+    assert.equal(result.available, false)
+    assert.equal(result.safe, null)
+    assert.deepEqual(result.categories, [])
+  }
 })

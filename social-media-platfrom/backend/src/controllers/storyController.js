@@ -99,7 +99,7 @@ export async function createStory(req, res, next) {
     await fs.unlink(file.path).catch(() => {})
     logStage(req, 'story_moderation_unavailable', { reason: decision?.reason })
     return res.status(503).json({
-      message: 'Media safety review is temporarily unavailable. Please try again shortly.',
+      message: 'Media moderation is temporarily unavailable. Please try again later.',
       code: decision?.reason || 'media_moderation_unavailable',
     })
   }

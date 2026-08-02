@@ -90,11 +90,11 @@ export async function moderateContent({ text, image, contentType = 'post' }) {
     }
   } catch {
     return {
-      safe: false,
+      safe: null,
       serviceUnavailable: true,
       badge: 'under-review',
-      textResult: { available: false, safe: false, flags: ['moderation_unavailable'] },
-      imageResult: { available: false, safe: false, flags: imagePayload ? ['moderation_unavailable'] : [] },
+      textResult: { available: false, safe: null, flags: ['moderation_unavailable'] },
+      imageResult: { available: false, safe: null, flags: imagePayload ? ['moderation_unavailable'] : [] },
       riskScore: null,
       status: 'unavailable',
       reason: 'moderation_service_unreachable',

@@ -253,8 +253,8 @@ async function callGemini(parts, timeoutMs = 8000) {
   return emptyResult('gemini_call_failed')
 }
 
-function unavailableMediaResult(reason) {
-  return { available: false, safe: false, reason, categories: [], confidence: 0 }
+export function unavailableMediaResult(reason) {
+  return { available: false, safe: null, reason, categories: [], confidence: null }
 }
 
 export function parseMediaJson(text) {

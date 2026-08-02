@@ -83,7 +83,7 @@ export default function CreatePostModal({ open, onClose }) {
     }
     const result = await check({ text, image: media[0]?.file })
     if (result.serviceUnavailable) {
-      setError('Content review is temporarily unavailable. Please try again shortly.')
+      setError('Media moderation is temporarily unavailable. Please try again later.')
       return
     }
     if (!result.safe) {
@@ -94,13 +94,15 @@ export default function CreatePostModal({ open, onClose }) {
     try {
       await addPost({ text, media, type })
     } catch (err) {
-      if (err.fileName) {
+      if (err.status === 422 && err.fileName) {
         setMedia((current) => current.map((item) => ({
           ...item,
           rejected: item.file.name === err.fileName,
         })))
       }
-      const fallback = err.mediaType?.startsWith('video/')
+      const fallback = err.status === 503
+        ? 'Media moderation is temporarily unavailable. Please try again later.'
+        : err.mediaType?.startsWith('video/')
         ? 'This video contains inappropriate content and cannot be uploaded.'
         : 'This image violates our community guidelines.'
       setError(err.reason || err.message || fallback)

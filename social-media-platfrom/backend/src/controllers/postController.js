@@ -87,8 +87,8 @@ export async function createPost(req, res, next) {
     if (unavailable) {
       await Promise.allSettled(files.map((file) => fs.unlink(file.path)))
       return res.status(503).json({
-        message: 'Media safety review is temporarily unavailable. Please try again.',
-        reason: 'We could not complete the media safety review. Please try again shortly.',
+        message: 'Media moderation is temporarily unavailable. Please try again later.',
+        reason: 'Media moderation is temporarily unavailable. Please try again later.',
         code: unavailable.reason,
         fileName: unavailable.fileName,
       })
