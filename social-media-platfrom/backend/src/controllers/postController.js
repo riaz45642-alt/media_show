@@ -3,6 +3,7 @@ import { createNotification } from '../services/notificationService.js'
 import { moderate } from '../services/moderationService.js'
 import { moderateUploadedMedia } from '../services/mediaModerationService.js'
 import fs from 'node:fs/promises'
+import { adjustReputation } from '../services/reputationService.js'
 
 const POST_SELECT = `
   SELECT p.*, p.author_id AS user_id, p.body AS text_content,
@@ -96,6 +97,7 @@ export async function createPost(req, res, next) {
     const rejectedMedia = mediaResults.find((decision) => !decision.safe)
     if (rejectedMedia) {
       await Promise.allSettled(files.map((file) => fs.unlink(file.path)))
+      if (result.status !== 'rejected') await adjustReputation(req.user.id, -10, 'media_moderation_rejection', 'post')
       const kind = rejectedMedia.mediaType.startsWith('video/') ? 'Video' : 'Image'
       return res.status(422).json({
         message: `${kind} rejected`,
@@ -148,6 +150,7 @@ export async function createPost(req, res, next) {
       return res.status(422).json({ message: 'Post rejected by moderation', reason: result.reason, post: rows[0] })
     }
 
+    if (result.status === 'safe') await adjustReputation(req.user.id, 2, 'approved_post', 'post')
     res.status(201).json({ post: rows[0], moderation: result })
   } catch (err) {
     next(err)
@@ -190,7 +193,10 @@ export async function toggleReaction(req, res, next) {
     if (!removed.rowCount) {
       await pool.query(`INSERT INTO reactions (user_id, post_id, reaction) VALUES ($1,$2,'like')`, [req.user.id, req.params.postId])
       const owner = await pool.query(`SELECT author_id FROM posts WHERE id = $1`, [req.params.postId])
-      if (owner.rows[0] && owner.rows[0].author_id !== req.user.id) await createNotification({ userId: owner.rows[0].author_id, actorId: req.user.id, category: 'likes', type: 'like', text: 'Someone liked your post', link: `/post/${req.params.postId}`, entityType: 'post', entityId: req.params.postId })
+      if (owner.rows[0] && owner.rows[0].author_id !== req.user.id) {
+        await createNotification({ userId: owner.rows[0].author_id, actorId: req.user.id, category: 'likes', type: 'like', text: 'Someone liked your post', link: `/post/${req.params.postId}`, entityType: 'post', entityId: req.params.postId })
+        await adjustReputation(owner.rows[0].author_id, 1, 'received_like', 'post')
+      }
     }
     const { rows } = await pool.query(
       `UPDATE posts SET like_count = (SELECT count(*) FROM reactions WHERE post_id = $1)

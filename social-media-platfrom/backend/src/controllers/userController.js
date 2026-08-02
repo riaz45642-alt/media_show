@@ -352,7 +352,7 @@ export async function getReputation(req, res, next) {
     const userId = req.params.id === 'me' ? req.user.id : req.params.id
 
     const { rows: userRows } = await pool.query(
-      `SELECT p.warnings_count, u.status,
+      `SELECT p.warnings_count, p.reputation_score, u.status,
               COALESCE((SELECT max(risk_score) FROM moderation_cases
                         WHERE target_type = 'user' AND target_id = u.id), 0) AS risk_score
        FROM users u JOIN user_profiles p ON p.user_id = u.id WHERE u.id = $1`,
@@ -393,16 +393,16 @@ export async function getReputation(req, res, next) {
     const community = clamp(50 + Math.min(40, Number(stats.total_likes) * 0.5) + Math.min(10, appealsWon * 2))
     const activity = clamp(Math.min(100, total * 4))
 
-    const trustScore = clamp(safety * 0.35 + community * 0.25 + moderation * 0.25 + activity * 0.15)
+    const trustScore = Number(user.reputation_score)
 
     const TIERS = [
-      { min: 90, key: 'platinum', label: 'Platinum' },
-      { min: 75, key: 'gold', label: 'Gold' },
-      { min: 60, key: 'silver', label: 'Silver' },
-      { min: 0, key: 'bronze', label: 'Bronze' },
+      { min: 180, key: 'platinum', label: 'Platinum', description: 'Exceptional positive participation and a consistently clean safety record.' },
+      { min: 140, key: 'gold', label: 'Gold', description: 'Strong positive engagement with responsible platform activity.' },
+      { min: 100, key: 'silver', label: 'Silver', description: 'A solid reputation maintained through safe and constructive participation.' },
+      { min: 0, key: 'bronze', label: 'Bronze', description: 'Build your reputation by sharing safe content and engaging positively.' },
     ]
     const tier = TIERS.find((t) => trustScore >= t.min) || TIERS[TIERS.length - 1]
-    const badges = [...TIERS].reverse().filter((badge) => trustScore >= badge.min).map(({ key, label }) => ({ key, label }))
+    const badges = [{ key: tier.key, label: tier.label }]
 
     res.json({
       trustScore,

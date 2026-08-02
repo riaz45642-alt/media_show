@@ -13,6 +13,7 @@ import { StoriesProvider } from './context/StoriesContext.jsx'
 import { CallProvider } from './context/CallContext.jsx'
 import CallOverlay from './components/calls/CallOverlay.jsx'
 import ContentFilterGuard from './components/common/ContentFilterGuard.jsx'
+import ScreenTimeGuard from './components/common/ScreenTimeGuard.jsx'
 import './styles/index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -30,6 +31,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                         <CallProvider>
                           <App />
                           <CallOverlay />
+                          <ScreenTimeGuard />
                         </CallProvider>
                       </StoriesProvider>
                     </ChatProvider>

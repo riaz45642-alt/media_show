@@ -6,6 +6,7 @@
 import { runRuleBasedFilter, validateUpload } from './ruleBasedFilter.js'
 import { analyzeTextWithGemini, analyzeImageWithGemini } from './geminiService.js'
 import { computeDecision } from './riskEngine.js'
+import { adjustReputation } from './reputationService.js'
 
 export const PERSISTED_MODERATION_STATUSES = Object.freeze(['safe', 'flagged', 'rejected'])
 const persistedStatuses = new Set(PERSISTED_MODERATION_STATUSES)
@@ -24,18 +25,23 @@ export function validateModerationDecision(decision) {
  * @returns {Promise<{status:'safe'|'flagged'|'rejected', riskScore:number, reason:string|null, flags:string[], ai:{text:object,image:object}}>}
  */
 export async function moderate({ text, imageUrl, image, userId, contentType = 'post' } = {}) {
+  const finalize = async (decision) => {
+    const validated = validateModerationDecision(decision)
+    if (validated.status === 'rejected' && userId) await adjustReputation(userId, -10, 'moderation_rejection', contentType)
+    return validated
+  }
   const ruleResult = runRuleBasedFilter({ text, userId, contentType })
 
   // Hard block (SQLi/XSS) short-circuits before ever calling the AI model.
   if (ruleResult.blocked) {
     const decision = computeDecision({ ruleResult })
-    return validateModerationDecision({ ...decision, ai: { text: null, image: null } })
+    return finalize({ ...decision, ai: { text: null, image: null } })
   }
 
   if (image) {
     const upload = validateUpload({ mimeType: image.mimeType, sizeBytes: image.sizeBytes, kind: 'image' })
     if (!upload.valid) {
-      return validateModerationDecision({
+      return finalize({
         status: 'rejected',
         riskScore: 100,
         reason: upload.reason,
@@ -51,7 +57,7 @@ export async function moderate({ text, imageUrl, image, userId, contentType = 'p
   ])
 
   const decision = computeDecision({ ruleResult, textAi, imageAi })
-  return validateModerationDecision({ ...decision, ai: { text: textAi, image: imageAi } })
+  return finalize({ ...decision, ai: { text: textAi, image: imageAi } })
 }
 
 // Backwards-compatible helpers (kept so any existing call sites don't break).

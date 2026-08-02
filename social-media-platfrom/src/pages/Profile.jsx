@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Settings as SettingsIcon, Edit3, Award, Gauge, LogOut, Grid3x3, Bookmark, Plus, Lock, Phone, Mail } from 'lucide-react'
+import { Settings as SettingsIcon, Edit3, LogOut, Grid3x3, Bookmark, Plus, Lock, Phone, Mail } from 'lucide-react'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import ProfileGrid from '../components/profile/ProfileGrid'
 import CreatePostModal from '../components/feed/CreatePostModal'
 import EmptyState from '../components/common/EmptyState'
-import TrustBadge from '../components/common/TrustBadge'
 import { useAuth } from '../context/AuthContext'
 import { usePosts } from '../context/PostsContext'
 import { useLanguage } from '../context/LanguageContext'
@@ -76,7 +75,6 @@ export default function Profile() {
           </span>
         )}
         <div className="mt-2.5 flex justify-center">
-          {reputation && <TrustBadge reputation={reputation} />}
         </div>
 
         <div className="mt-4 flex items-center justify-center gap-6">
@@ -106,21 +104,12 @@ export default function Profile() {
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3.5">
-        <div className="soft-card p-4 text-center">
-          <Gauge size={20} className="mx-auto text-secondary" />
-          <p className="mt-2 text-xl font-bold text-gray-800 dark:text-gray-100">{score}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">{t('safe_zone_score')}</p>
-        </div>
-        <div className="soft-card p-4 text-center">
-          <Award size={20} className="mx-auto text-accent-dark" />
-          <p className="mt-2 text-xl font-bold text-gray-800 dark:text-gray-100">{reputation?.badges?.length ?? 0}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">{t('badges_earned')}</p>
-        </div>
-      </div>
-
       <div className="mt-5 soft-card p-4">
         <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">{t('your_badges')}</p>
+        {reputation && <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <div><p className="text-xs uppercase tracking-wide text-gray-400">Reputation Score</p><p className="mt-1 text-3xl font-bold text-gray-800 dark:text-gray-100">{score}</p></div>
+          <div><p className="text-xs uppercase tracking-wide text-gray-400">Current Badge</p><p className="mt-1 text-xl font-bold text-accent-dark">{reputation.tier.label}</p></div>
+        </div>}
         <div className="flex flex-wrap gap-2">
           {(reputation?.badges || []).map((badge) => {
             const b = badge.label
@@ -132,6 +121,7 @@ export default function Profile() {
           })}
           {!reputation && <span className="text-xs text-gray-400">Score unavailable</span>}
         </div>
+        {reputation?.tier?.description && <p className="mt-3 text-sm text-gray-500 dark:text-gray-300">{reputation.tier.description}</p>}
       </div>
 
       {/* Instagram-style post grid with Posts / Saved tabs */}

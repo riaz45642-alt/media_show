@@ -1,6 +1,7 @@
 import { pool } from '../config/db.js'
 import { moderate } from '../services/moderationService.js'
 import { createNotification } from '../services/notificationService.js'
+import { adjustReputation } from '../services/reputationService.js'
 
 export async function listComments(req, res, next) {
   try {
@@ -35,6 +36,7 @@ export async function createComment(req, res, next) {
     if (result.status === 'rejected') {
       return res.status(422).json({ message: 'Comment rejected by moderation', reason: result.reason })
     }
+    await adjustReputation(req.user.id, 1, 'approved_comment', 'comment')
     const countResult = await pool.query(
       `UPDATE posts SET comment_count = (
          SELECT count(*) FROM comments WHERE post_id = $1 AND deleted_at IS NULL AND moderation_status = 'safe'

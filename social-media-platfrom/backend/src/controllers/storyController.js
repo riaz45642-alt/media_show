@@ -4,6 +4,7 @@ import { moderateUploadedMedia } from '../services/mediaModerationService.js'
 import { moderate } from '../services/moderationService.js'
 import { deletePublicMedia, uploadPublicMedia } from '../services/objectStorageService.js'
 import { deleteStoryAndMedia } from '../services/storyCleanupService.js'
+import { adjustReputation } from '../services/reputationService.js'
 
 const kindFor = (mime = '') => mime.startsWith('video/') ? 'video' : 'image'
 const logStage = (req, event, extra = {}) => console.info(JSON.stringify({
@@ -104,6 +105,7 @@ export async function createStory(req, res, next) {
   }
   if (!decision.safe) {
     await fs.unlink(file.path).catch(() => {})
+    if (captionDecision.status !== 'rejected') await adjustReputation(req.user.id, -10, 'media_moderation_rejection', 'story')
     return res.status(422).json({ message: `${kindFor(file.mimetype) === 'video' ? 'Video' : 'Image'} rejected`, reason: decision.reason, categories: decision.categories })
   }
   logStage(req, 'story_moderation_completed', { safe: true, confidence: decision.confidence })
