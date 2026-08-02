@@ -7,8 +7,10 @@ export async function listComments(req, res, next) {
   try {
     const { postId } = req.params
     const { rows } = await pool.query(
-      `SELECT c.id, c.body AS text_content, c.created_at, c.author_id AS user_id, u.display_name AS author
+      `SELECT c.id, c.body AS text_content, c.created_at, c.author_id AS user_id,
+              u.display_name AS author, avatar.storage_path AS avatar_url
        FROM comments c JOIN user_profiles u ON u.user_id = c.author_id
+       LEFT JOIN media_assets avatar ON avatar.id = u.avatar_media_id AND avatar.deleted_at IS NULL
        WHERE c.post_id = $1 AND c.moderation_status = 'safe'
        ORDER BY c.created_at ASC LIMIT 200`,
       [postId]
@@ -57,8 +59,14 @@ export async function createComment(req, res, next) {
       await Promise.all(mentioned.rows.filter(({ user_id }) => user_id !== req.user.id).map(({ user_id }) => createNotification({ userId: user_id, actorId: req.user.id, category: 'mentions', type: 'mention', text: 'Someone mentioned you in a comment', link: `/post/${postId}`, entityType: 'comment', entityId: rows[0].id })))
     }
 
+    const authorResult = await pool.query(
+      `SELECT p.display_name AS author, avatar.storage_path AS avatar_url
+       FROM user_profiles p
+       LEFT JOIN media_assets avatar ON avatar.id = p.avatar_media_id AND avatar.deleted_at IS NULL
+       WHERE p.user_id = $1::uuid`, [req.user.id]
+    )
     res.status(201).json({
-      comment: { ...rows[0], author: req.user.name || 'Member' },
+      comment: { ...rows[0], author: authorResult.rows[0]?.author || 'Member', avatar_url: authorResult.rows[0]?.avatar_url || null },
       commentCount: Number(countResult.rows[0]?.comment_count || 0),
       moderation: result,
     })

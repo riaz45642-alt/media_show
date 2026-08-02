@@ -41,7 +41,7 @@ export default function CommentsSheet({ post, open, onClose }) {
           post.comments.map((c) => (
             <div key={c.id} className="flex items-start gap-3">
               <Link to={`/users/${c.authorId}`} onClick={onClose} aria-label={`Open ${c.author}'s profile`}>
-                <Avatar name={c.author} src={c.avatar} size={32} />
+                <Avatar name={c.author} src={c.avatarSrc || c.avatar_url || c.avatar} size={32} />
               </Link>
               <div className="flex-1 rounded-2xl bg-gray-50 dark:bg-white/5 px-3.5 py-2">
                 <Link to={`/users/${c.authorId}`} onClick={onClose} className="text-xs font-semibold text-gray-800 hover:underline dark:text-gray-100">{c.author}</Link>

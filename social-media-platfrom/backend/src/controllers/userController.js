@@ -407,6 +407,10 @@ export async function updateMyAvatar(req, res, next) {
   const file = req.file
   if (!file) return res.status(400).json({ message: 'Profile image is required.', code: 'AVATAR_REQUIRED' })
   try {
+    console.info(JSON.stringify({
+      level: 'info', event: 'avatar_upload_started', requestId: req.requestId, userId: req.user.id,
+      fileName: file.originalname, mimeType: file.mimetype, byteSize: file.size,
+    }))
     const [decision] = await moderateUploadedMedia([file])
     if (!decision.available) {
       await fs.unlink(file.path).catch(() => {})
@@ -416,14 +420,21 @@ export async function updateMyAvatar(req, res, next) {
       await fs.unlink(file.path).catch(() => {})
       return res.status(422).json({ message: 'Profile image rejected.', reason: decision.reason, categories: decision.categories })
     }
+    console.info(JSON.stringify({ level: 'info', event: 'avatar_storage_upload_started', requestId: req.requestId, userId: req.user.id }))
     const stored = await uploadPublicMedia(file, `avatars/${req.user.id}`)
+    console.info(JSON.stringify({
+      level: 'info', event: 'avatar_storage_upload_completed', requestId: req.requestId, userId: req.user.id,
+      bucket: stored.bucket, objectPath: stored.objectPath,
+    }))
     const client = await pool.connect()
     let oldMedia
     try {
       await client.query('BEGIN')
       oldMedia = (await client.query(
         `SELECT ma.id, ma.storage_bucket, ma.storage_path FROM user_profiles p
-         LEFT JOIN media_assets ma ON ma.id = p.avatar_media_id WHERE p.user_id = $1::uuid FOR UPDATE`, [req.user.id]
+         LEFT JOIN media_assets ma ON ma.id = p.avatar_media_id
+         WHERE p.user_id = $1::uuid
+         FOR UPDATE OF p`, [req.user.id]
       )).rows[0]
       const media = (await client.query(
         `INSERT INTO media_assets (owner_id, kind, storage_bucket, storage_path, mime_type, byte_size, moderation_status)
@@ -431,7 +442,9 @@ export async function updateMyAvatar(req, res, next) {
         [req.user.id, stored.bucket, stored.publicUrl, file.mimetype, file.size]
       )).rows[0]
       await client.query(`UPDATE user_profiles SET avatar_media_id = $1::uuid, updated_at = now() WHERE user_id = $2::uuid`, [media.id, req.user.id])
-      if (oldMedia?.id) await client.query(`DELETE FROM media_assets WHERE id = $1::uuid`, [oldMedia.id])
+      if (oldMedia?.id) {
+        await client.query(`UPDATE media_assets SET deleted_at = now() WHERE id = $1::uuid`, [oldMedia.id])
+      }
       await client.query('COMMIT')
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {})
@@ -445,9 +458,17 @@ export async function updateMyAvatar(req, res, next) {
         console.error(JSON.stringify({ level: 'error', event: 'old_avatar_storage_delete_failed', userId: req.user.id, code: error.code, message: error.message }))
       })
     }
+    console.info(JSON.stringify({
+      level: 'info', event: 'avatar_profile_updated', requestId: req.requestId, userId: req.user.id,
+      avatarUrl: stored.publicUrl,
+    }))
     res.status(200).json({ avatar_url: stored.publicUrl })
   } catch (error) {
     await fs.unlink(file.path).catch(() => {})
+    console.error(JSON.stringify({
+      level: 'error', event: 'avatar_upload_failed', requestId: req.requestId, userId: req.user?.id,
+      error: { name: error.name, code: error.code, message: error.message, detail: error.detail, stack: error.stack },
+    }))
     next(error)
   }
 }

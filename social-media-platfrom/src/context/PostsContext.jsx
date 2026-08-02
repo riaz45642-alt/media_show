@@ -100,7 +100,7 @@ export function PostsProvider({ children }) {
     const comment = {
       id: data.comment.id,
       author: user?.name || data.comment.author || 'You',
-      avatarSrc: user?.avatar,
+      avatarSrc: data.comment.avatar_url || user?.avatar,
       text: data.comment.text_content,
       createdAt: data.comment.created_at,
     }

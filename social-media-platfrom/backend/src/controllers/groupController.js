@@ -152,8 +152,10 @@ export async function listMembers(req, res, next) {
   try {
     if (!await getRole(req.params.groupId, req.user.id)) return res.status(403).json({ message: 'You are not a member of this group' })
     const { rows } = await pool.query(
-      `SELECT gm.user_id, gm.role, gm.joined_at, up.display_name, up.avatar_media_id
+      `SELECT gm.user_id, gm.role, gm.joined_at, up.display_name, up.avatar_media_id,
+              avatar.storage_path AS avatar_url
        FROM group_members gm JOIN user_profiles up ON up.user_id = gm.user_id
+       LEFT JOIN media_assets avatar ON avatar.id = up.avatar_media_id AND avatar.deleted_at IS NULL
        WHERE gm.group_id = $1 ORDER BY gm.role, gm.joined_at`,
       [req.params.groupId]
     )

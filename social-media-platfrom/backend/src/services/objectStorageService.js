@@ -14,6 +14,7 @@ async function ensurePublicBucket({ baseUrl, serviceKey, bucket }) {
       const error = new Error(`Supabase Storage bucket check failed (${response.status}): ${detail.slice(0, 200)}`)
       error.status = 503
       error.code = response.status === 404 ? 'OBJECT_STORAGE_BUCKET_MISSING' : 'OBJECT_STORAGE_BUCKET_CHECK_FAILED'
+      error.expose = true
       throw error
     }
     const metadata = await response.json()
@@ -21,12 +22,20 @@ async function ensurePublicBucket({ baseUrl, serviceKey, bucket }) {
 
     // This service intentionally stores browser-visible social media. A
     // /public/ object URL is unusable while the bucket remains private.
-    const update = await fetch(endpoint, { method: 'PUT', headers, body: JSON.stringify({ public: true }) })
+    const update = await fetch(endpoint, {
+      method: 'PUT', headers,
+      body: JSON.stringify({
+        public: true,
+        file_size_limit: metadata.file_size_limit ?? null,
+        allowed_mime_types: metadata.allowed_mime_types ?? null,
+      }),
+    })
     if (!update.ok) {
       const detail = await update.text().catch(() => '')
       const error = new Error(`Supabase Storage bucket must be public (${update.status}): ${detail.slice(0, 200)}`)
       error.status = 503
       error.code = 'OBJECT_STORAGE_BUCKET_NOT_PUBLIC'
+      error.expose = true
       throw error
     }
   })().catch((error) => {
@@ -50,6 +59,7 @@ export async function uploadPublicMedia(file, folder = 'stories') {
     const error = new Error('Permanent media storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on Render.')
     error.status = 503
     error.code = 'OBJECT_STORAGE_NOT_CONFIGURED'
+    error.expose = true
     throw error
   }
 
@@ -74,6 +84,7 @@ export async function uploadPublicMedia(file, folder = 'stories') {
     const error = new Error(`Supabase Storage upload failed (${response.status}): ${detail.slice(0, 300)}`)
     error.status = 502
     error.code = 'OBJECT_STORAGE_UPLOAD_FAILED'
+    error.expose = true
     throw error
   }
 

@@ -25,10 +25,12 @@ export async function listMessages(req, res, next) {
     const before = req.query.before || null
 
     const { rows } = await pool.query(
-      `SELECT m.*, up.display_name AS sender_name, gmm.file_url, gmm.file_name, gmm.file_type,
+      `SELECT m.*, up.display_name AS sender_name, avatar.storage_path AS sender_avatar_url,
+              gmm.file_url, gmm.file_name, gmm.file_type,
               EXISTS (SELECT 1 FROM group_pinned_messages pm WHERE pm.message_id = m.id) AS is_pinned
        FROM messages m
        JOIN user_profiles up ON up.user_id = m.sender_id
+       LEFT JOIN media_assets avatar ON avatar.id = up.avatar_media_id AND avatar.deleted_at IS NULL
        LEFT JOIN group_message_media gmm ON gmm.message_id = m.id
        WHERE m.conversation_id = $1 AND m.deleted_at IS NULL
          AND ($2::timestamptz IS NULL OR m.sent_at < $2)

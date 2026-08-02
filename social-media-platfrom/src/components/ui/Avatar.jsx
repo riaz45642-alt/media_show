@@ -1,4 +1,8 @@
+import { useEffect, useState } from 'react'
+
 export default function Avatar({ name = 'U', src, color = '#4A90E2', size = 44, ring = false }) {
+  const [imageFailed, setImageFailed] = useState(false)
+  useEffect(() => setImageFailed(false), [src])
   const initials = name
     .split(' ')
     .map((p) => p[0])
@@ -8,11 +12,12 @@ export default function Avatar({ name = 'U', src, color = '#4A90E2', size = 44, 
 
   const style = { width: size, height: size }
 
-  if (src) {
+  if (src && !imageFailed) {
     return (
       <img
         src={src}
         alt={name}
+        onError={() => setImageFailed(true)}
         style={style}
         className={`rounded-full object-cover ${ring ? 'ring-4 ring-primary/20' : ''}`}
       />
