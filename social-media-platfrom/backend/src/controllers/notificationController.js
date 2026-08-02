@@ -11,24 +11,33 @@ export async function listNotifications(req, res, next) {
   try {
     const { category, unread, search } = req.query
     const params = [req.user.id]
-    let where = 'WHERE recipient_id = $1'
+    let where = 'WHERE n.recipient_id = $1'
 
     if (category && category !== 'all') {
       const kinds = KINDS_BY_CATEGORY[category]
       if (!kinds) return res.status(400).json({ message: 'Unknown notification category' })
       params.push(kinds)
-      where += ` AND kind::text = ANY($${params.length}::text[])`
+      where += ` AND n.kind::text = ANY($${params.length}::text[])`
     }
     if (unread === 'true') {
-      where += ' AND read_at IS NULL'
+      where += ' AND n.read_at IS NULL'
     }
     if (search) {
       params.push(`%${search}%`)
-      where += ` AND (title ILIKE $${params.length} OR body ILIKE $${params.length})`
+      where += ` AND (n.title ILIKE $${params.length} OR n.body ILIKE $${params.length})`
     }
 
     const { rows } = await pool.query(
-      `SELECT * FROM notifications ${where} ORDER BY created_at DESC LIMIT 100`,
+      `SELECT n.*, actor_profile.display_name AS actor_name, actor_avatar.storage_path AS actor_avatar_url,
+              fr.status::text AS follow_request_status,
+              CASE WHEN n.kind::text = 'friend_request'
+                   THEN COALESCE(fr.status::text = 'accepted', (n.data->>'accepted')::boolean, false)
+                   ELSE false END AS accepted
+       FROM notifications n
+       LEFT JOIN user_profiles actor_profile ON actor_profile.user_id = n.actor_id
+       LEFT JOIN media_assets actor_avatar ON actor_avatar.id = actor_profile.avatar_media_id AND actor_avatar.deleted_at IS NULL
+       LEFT JOIN friend_requests fr ON n.entity_type = 'follow_request' AND fr.id = n.entity_id
+       ${where} ORDER BY n.created_at DESC LIMIT 100`,
       params
     )
     res.json(rows)

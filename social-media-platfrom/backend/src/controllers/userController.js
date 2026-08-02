@@ -56,7 +56,13 @@ export async function getUserProfile(req, res, next) {
   try {
     await ensureProfileSchema()
     const { rows } = await pool.query(
-      `SELECT u.id, p.display_name AS name, p.username, p.bio, p.contact_email, p.age_group,
+      `SELECT u.id, p.display_name AS name, p.username,
+              CASE WHEN ($2::uuid = u.id OR s.profile_visibility = 'public' OR EXISTS
+                (SELECT 1 FROM follows f WHERE f.follower_id = $2::uuid AND f.followed_id = u.id)) THEN p.bio ELSE NULL END AS bio,
+              CASE WHEN ($2::uuid = u.id OR s.profile_visibility = 'public' OR EXISTS
+                (SELECT 1 FROM follows f WHERE f.follower_id = $2::uuid AND f.followed_id = u.id)) THEN p.contact_email ELSE NULL END AS contact_email,
+              CASE WHEN ($2::uuid = u.id OR s.profile_visibility = 'public' OR EXISTS
+                (SELECT 1 FROM follows f WHERE f.follower_id = $2::uuid AND f.followed_id = u.id)) THEN p.age_group ELSE NULL END AS age_group,
               avatar.storage_path AS avatar_url,
               (s.profile_visibility <> 'public') AS is_private,
               s.messaging_enabled,
@@ -206,7 +212,14 @@ export async function acceptFollowRequest(req, res, next) {
       await client.query('ROLLBACK')
       return res.status(404).json({ message: 'Follow request not found' })
     }
-    await client.query(`INSERT INTO follows (follower_id, followed_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [request.rows[0].sender_id, req.user.id])
+      await client.query(`INSERT INTO follows (follower_id, followed_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [request.rows[0].sender_id, req.user.id])
+    await client.query(
+      `UPDATE notifications
+       SET read_at = COALESCE(read_at, now()),
+           data = COALESCE(data, '{}'::jsonb) || '{"accepted":true,"status":"accepted"}'::jsonb
+       WHERE recipient_id = $1::uuid AND entity_type = 'follow_request' AND entity_id = $2::uuid`,
+      [req.user.id, req.params.requestId]
+    )
     await client.query('COMMIT')
     await createNotification({
       userId: request.rows[0].sender_id, actorId: req.user.id, category: 'followers', type: 'follow',

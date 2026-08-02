@@ -1,6 +1,41 @@
 import fs from 'node:fs/promises'
 
 const cleanBase = (value = '') => value.trim().replace(/\/$/, '')
+const publicBucketChecks = new Map()
+
+async function ensurePublicBucket({ baseUrl, serviceKey, bucket }) {
+  if (publicBucketChecks.has(bucket)) return publicBucketChecks.get(bucket)
+  const check = (async () => {
+    const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' }
+    const endpoint = `${baseUrl}/storage/v1/bucket/${encodeURIComponent(bucket)}`
+    const response = await fetch(endpoint, { headers })
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '')
+      const error = new Error(`Supabase Storage bucket check failed (${response.status}): ${detail.slice(0, 200)}`)
+      error.status = 503
+      error.code = response.status === 404 ? 'OBJECT_STORAGE_BUCKET_MISSING' : 'OBJECT_STORAGE_BUCKET_CHECK_FAILED'
+      throw error
+    }
+    const metadata = await response.json()
+    if (metadata.public === true) return
+
+    // This service intentionally stores browser-visible social media. A
+    // /public/ object URL is unusable while the bucket remains private.
+    const update = await fetch(endpoint, { method: 'PUT', headers, body: JSON.stringify({ public: true }) })
+    if (!update.ok) {
+      const detail = await update.text().catch(() => '')
+      const error = new Error(`Supabase Storage bucket must be public (${update.status}): ${detail.slice(0, 200)}`)
+      error.status = 503
+      error.code = 'OBJECT_STORAGE_BUCKET_NOT_PUBLIC'
+      throw error
+    }
+  })().catch((error) => {
+    publicBucketChecks.delete(bucket)
+    throw error
+  })
+  publicBucketChecks.set(bucket, check)
+  return check
+}
 
 export function objectStorageConfigured() {
   return Boolean(cleanBase(process.env.SUPABASE_URL) && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim())
@@ -17,6 +52,8 @@ export async function uploadPublicMedia(file, folder = 'stories') {
     error.code = 'OBJECT_STORAGE_NOT_CONFIGURED'
     throw error
   }
+
+  await ensurePublicBucket({ baseUrl, serviceKey, bucket })
 
   const objectPath = `${folder}/${file.filename}`
   const bytes = await fs.readFile(file.path)

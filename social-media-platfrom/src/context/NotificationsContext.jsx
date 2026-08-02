@@ -31,6 +31,7 @@ const normalize = (item) => ({
   text: item.body || item.title,
   time: new Date(item.created_at).toLocaleString(),
   read: Boolean(item.read_at),
+  followRequestStatus: item.follow_request_status || (item.accepted ? 'accepted' : 'pending'),
 })
 
 export function NotificationsProvider({ children }) {
@@ -144,7 +145,9 @@ export function NotificationsProvider({ children }) {
   }
   const acceptFollowRequest = async (requestId, notificationId) => {
     await request(`/users/follow-requests/${requestId}/accept`, { method: 'POST' })
-    setItems((previous) => previous.map((item) => item.id === notificationId ? { ...item, read: true, accepted: true } : item))
+    setItems((previous) => previous.map((item) => item.id === notificationId
+      ? { ...item, read: true, accepted: true, followRequestStatus: 'accepted' }
+      : item))
   }
   const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items])
   return <NotificationsContext.Provider value={{ items, setItems, unreadCount, markAllRead, markRead, dismissNotification, markConversationNotificationsRead, acceptFollowRequest, refresh, toasts, dismissToast, notificationPermission, enableBrowserNotifications, preferences, updatePreference }}>{children}</NotificationsContext.Provider>

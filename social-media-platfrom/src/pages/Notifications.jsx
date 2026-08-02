@@ -7,6 +7,7 @@ import PageHeader from '../components/common/PageHeader'
 import EmptyState from '../components/common/EmptyState'
 import { NOTIFICATION_CATEGORIES, NOTIFICATION_PREFERENCES } from '../data/notifications'
 import { useNotifications } from '../context/NotificationsContext'
+import Avatar from '../components/ui/Avatar'
 
 const ICONS = {
   badge: { icon: Award, color: 'text-accent-dark bg-accent/15' },
@@ -127,14 +128,17 @@ export default function Notifications() {
                 key={n.id}
                 className={`soft-card flex w-full items-center gap-3.5 p-4 text-left animate-slideUp ${!n.read ? 'ring-2 ring-primary/15' : ''}`}
               >
-                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${color}`}>
-                  <Icon size={17} />
-                </span>
+                {n.actor_avatar_url
+                  ? <Avatar name={n.actor_name || 'Member'} src={n.actor_avatar_url} size={40} />
+                  : <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${color}`}><Icon size={17} /></span>}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-700 dark:text-gray-200">{n.text}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{n.time}</p>
-                  {n.kind === 'friend_request' && n.entity_type === 'follow_request' && !n.accepted && (
+                  {n.kind === 'friend_request' && n.entity_type === 'follow_request' && n.followRequestStatus === 'pending' && (
                     <button onClick={() => acceptFollowRequest(n.entity_id, n.id)} className="mt-2 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white">Accept</button>
+                  )}
+                  {n.kind === 'friend_request' && n.followRequestStatus === 'accepted' && (
+                    <p className="mt-1 text-xs font-semibold text-secondary-dark">Accepted</p>
                   )}
                 </div>
                 {!n.read && <button aria-label="Mark read" onClick={() => markRead(n.id)} className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
