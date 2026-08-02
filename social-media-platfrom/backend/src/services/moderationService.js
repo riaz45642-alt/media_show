@@ -4,7 +4,7 @@
 // usernames, bios, images) should call before being persisted or shown.
 
 import { runRuleBasedFilter, validateUpload } from './ruleBasedFilter.js'
-import { analyzeTextWithGemini, analyzeImageWithGemini } from './geminiService.js'
+import { analyzeTextWithGemini } from './geminiService.js'
 import { computeDecision } from './riskEngine.js'
 import { adjustReputation } from './reputationService.js'
 
@@ -51,10 +51,10 @@ export async function moderate({ text, imageUrl, image, userId, contentType = 'p
     }
   }
 
-  const [textAi, imageAi] = await Promise.all([
-    text ? analyzeTextWithGemini(text) : Promise.resolve(null),
-    image ? analyzeImageWithGemini(image) : Promise.resolve(null),
-  ])
+  // Text remains on the existing Gemini pipeline. Media is authoritatively
+  // moderated from the uploaded file by Sightengine in mediaModerationService.
+  const textAi = text ? await analyzeTextWithGemini(text) : null
+  const imageAi = null
 
   const decision = computeDecision({ ruleResult, textAi, imageAi })
   return finalize({ ...decision, ai: { text: textAi, image: imageAi } })

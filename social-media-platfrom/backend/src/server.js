@@ -36,7 +36,7 @@ console.info(JSON.stringify({
   configured: Object.fromEntries([
     'DATABASE_URL', 'CLIENT_URL', 'PUBLIC_API_URL', 'SUPABASE_URL',
     'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_STORAGE_BUCKET', 'GEMINI_API_KEY',
-    'GEMINI_MODEL', 'JWT_SECRET',
+    'GEMINI_MODEL', 'SIGHTENGINE_API_USER', 'SIGHTENGINE_API_SECRET', 'JWT_SECRET',
   ].map((name) => [name, Boolean(process.env[name]?.trim())])),
 }))
 

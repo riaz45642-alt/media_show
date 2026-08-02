@@ -7,6 +7,11 @@ import {
   validateModerationDecision,
 } from '../src/services/moderationService.js'
 import { decideMediaModeration, parseMediaJson, unavailableMediaResult } from '../src/services/geminiService.js'
+import {
+  interpretSightengineHttpResponse,
+  normalizeSightengineRequestError,
+  normalizeSightengineResponse,
+} from '../src/services/sightengineService.js'
 
 test('ordinary greetings and names are not flagged by rules', () => {
   for (const text of ['Hello', 'Ahmed', 'Hi there', 'Good morning']) {
@@ -73,5 +78,83 @@ test('quota, timeout, and provider failures are unavailable rather than unsafe',
     assert.equal(result.available, false)
     assert.equal(result.safe, null)
     assert.deepEqual(result.categories, [])
+  }
+})
+
+test('Sightengine allows results below the high-confidence threshold', () => {
+  const result = normalizeSightengineResponse({
+    status: 'success', nudity: { sexual_activity: 0.2, sexual_display: 0.1, erotica: 0.3 },
+    gore: { prob: 0.4 }, weapon: { classes: { firearm: 0.8 } }, violence: { prob: 0.1 },
+    recreational_drug: { prob: 0.2 }, offensive: { nazi: 0.1 },
+  })
+  assert.equal(result.available, true)
+  assert.equal(result.safe, true)
+  assert.deepEqual(result.categories, [])
+})
+
+test('Sightengine rejects high-confidence prohibited image results', () => {
+  const result = normalizeSightengineResponse({
+    status: 'success', nudity: { sexual_activity: 0.93 }, gore: { prob: 0.1 },
+    weapon: { classes: { firearm: 0.2 } }, violence: { prob: 0.2 },
+    recreational_drug: { prob: 0.1 }, offensive: { nazi: 0.1 },
+  })
+  assert.equal(result.safe, false)
+  assert.ok(result.confidence >= 0.85)
+  assert.deepEqual(result.categories, ['nudity'])
+})
+
+test('Sightengine provider failures are unavailable, never unsafe', () => {
+  const result = normalizeSightengineResponse({ status: 'failure', error: { type: 'rate_limit' } })
+  assert.equal(result.available, false)
+  assert.equal(result.safe, null)
+})
+
+test('Sightengine accepts a successful safe image response even without a status envelope', () => {
+  const result = normalizeSightengineResponse({
+    nudity: { sexual_activity: 0.01, sexual_display: 0.02, erotica: 0.03 },
+    gore: { prob: 0.01 }, weapon: { classes: { firearm: 0.01 } }, violence: { prob: 0.01 },
+    recreational_drug: { prob: 0.01 }, offensive: { nazi: 0.01 },
+  })
+  assert.equal(result.available, true)
+  assert.equal(result.safe, true)
+})
+
+test('Sightengine rejects high-confidence gore', () => {
+  const result = normalizeSightengineResponse({ status: 'success', gore: { prob: 0.94 } })
+  assert.equal(result.available, true)
+  assert.equal(result.safe, false)
+  assert.deepEqual(result.categories, ['gore'])
+})
+
+for (const [name, status, payload, expectedReason] of [
+  ['invalid API credentials', 401, { status: 'failure', error: { type: 'credentials_error', code: 1, message: 'Invalid credentials' } }, 'credentials_error'],
+  ['invalid model', 400, { status: 'failure', error: { type: 'argument_error', code: 2, message: 'Unknown model' } }, 'argument_error'],
+  ['HTTP 400', 400, { status: 'failure', error: { type: 'request_error', code: 3, message: 'Bad request' } }, 'http_400'],
+  ['HTTP 401', 401, { status: 'failure', error: { type: 'credentials_error', message: 'Unauthorized' } }, 'http_401'],
+  ['HTTP 403', 403, { status: 'failure', error: { type: 'plan_error', message: 'Forbidden' } }, 'http_403'],
+  ['HTTP 429', 429, { status: 'failure', error: { type: 'usage_limit', message: 'Rate limited' } }, 'http_429'],
+  ['unsupported file', 400, { status: 'failure', error: { type: 'media_error', code: 4, message: 'Unsupported file' } }, 'media_error'],
+]) {
+  test(`Sightengine ${name} remains unavailable and preserves provider diagnostics`, () => {
+    const result = interpretSightengineHttpResponse(status, payload)
+    assert.equal(result.available, false)
+    assert.equal(result.safe, null)
+    assert.match(result.reason, new RegExp(expectedReason))
+    assert.equal(result.providerError.message, payload.error.message)
+  })
+}
+
+test('Sightengine timeout remains unavailable', () => {
+  const result = normalizeSightengineRequestError(Object.assign(new Error('timeout of 30000ms exceeded'), { code: 'ECONNABORTED' }))
+  assert.equal(result.available, false)
+  assert.equal(result.safe, null)
+  assert.equal(result.reason, 'sightengine_timeout')
+})
+
+test('Sightengine malformed JSON/result remains unavailable rather than unsafe', () => {
+  for (const payload of [null, 'not-json', {}, []]) {
+    const result = normalizeSightengineResponse(payload)
+    assert.equal(result.available, false)
+    assert.equal(result.safe, null)
   }
 })
