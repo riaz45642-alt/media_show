@@ -112,7 +112,7 @@ const MEDIA_MODERATION_SCHEMA = {
 
 const CHILD_INTIMACY_SYSTEM_INSTRUCTION = `You are a strict visual safety classifier for a social platform used by children.
 Inspect the supplied image or video and determine whether it visibly contains kissing, making out, romantic intimacy, intimate couples, bedroom scenes, seductive posing, lingerie focus, bikini focus, sexually suggestive behavior, or explicit romance.
-Set safe=false when any of those child-inappropriate intimacy categories are visibly present. Do not infer intimacy from ordinary friends, family members, neutral portraits, normal clothing, sports, scenery, or people merely standing together.
+Set safe=false when any of those child-inappropriate intimacy categories are visibly present. Judge visible content, not photographic style or lighting. Dark filters, low light, shadows, high contrast, mirror composition, indoor lighting, skin tone, or a single-person pose are not evidence of sexual content. A fully clothed selfie, neutral portrait, family/group photo, or ordinary lifestyle photo must be safe unless prohibited content is actually visible. Do not infer intimacy from ordinary friends, family members, neutral portraits, normal clothing, sports, scenery, or people merely standing together.
 Return ONLY JSON with exactly these fields: safe (boolean), reason (string), confidence (number from 0 to 1). Confidence is confidence in the unsafe finding.`
 
 const CHILD_INTIMACY_SCHEMA = {

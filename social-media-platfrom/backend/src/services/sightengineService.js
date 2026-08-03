@@ -105,19 +105,21 @@ export function normalizeSightengineResponse(payload, context = {}) {
     drugs: maxMatching(leaves, /recreational_drug|drug|cannabis|cocaine|heroin|narcotic/, /none|safe/),
     offensive: maxMatching(leaves, /offensive|nazi|confederate|supremacist|terrorist|middle_finger|hate/, /none|safe/),
   }
-  // Generic "suggestive" is intentionally treated differently from explicit
-  // categories. Mirror selfies and fully-clothed portraits can produce a
-  // moderate suggestive score, so 0.35-0.60 is sent to Gemini for confirmation.
-  // Explicit and severe categories keep the strict child-safety threshold.
+  // Appearance-only signals are evidence for secondary review, not proof of
+  // prohibited content. Dark/high-contrast photos and ordinary portraits can
+  // score highly as suggestive or very_suggestive. Only explicit/severe
+  // categories may reject at this stage; Gemini verifies the warning signals.
+  const secondaryReviewScores = {
+    suggestive: scores.suggestive,
+    very_suggestive: scores.very_suggestive,
+  }
   const categories = Object.entries(scores)
-    .filter(([category, score]) => score >= (category === 'suggestive'
-      ? SIGHTENGINE_SUGGESTIVE_REJECTION_THRESHOLD
-      : SIGHTENGINE_REJECTION_THRESHOLD))
+    .filter(([category, score]) => !Object.hasOwn(secondaryReviewScores, category)
+      && score >= SIGHTENGINE_REJECTION_THRESHOLD)
     .map(([category]) => category)
-  const reviewCategories = scores.suggestive >= SIGHTENGINE_REJECTION_THRESHOLD
-    && scores.suggestive < SIGHTENGINE_SUGGESTIVE_REJECTION_THRESHOLD
-    ? ['suggestive']
-    : []
+  const reviewCategories = Object.entries(secondaryReviewScores)
+    .filter(([, score]) => score >= SIGHTENGINE_REJECTION_THRESHOLD)
+    .map(([category]) => category)
   const confidence = Math.max(0, ...Object.values(scores))
   return {
     available: true,
