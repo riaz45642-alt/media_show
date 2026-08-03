@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { Send } from 'lucide-react'
 import Modal from '../ui/Modal'
 import Avatar from '../ui/Avatar'
+import { useAuth } from '../../context/AuthContext'
 
 export default function ReelCommentsSheet({ open, onClose, comments, onAdd }) {
+  const { user } = useAuth()
   const [text, setText] = useState('')
 
   const submit = (e) => {
@@ -22,7 +24,7 @@ export default function ReelCommentsSheet({ open, onClose, comments, onAdd }) {
         ) : (
           comments.map((c) => (
             <div key={c.id} className="flex items-start gap-3">
-              <Avatar name={c.author} size={32} />
+              <Avatar name={c.author} src={c.authorId === user?.id ? user?.avatar : (c.avatarSrc || c.avatar_url || c.avatar)} size={32} />
               <div>
                 <p className="text-sm">
                   <span className="font-semibold text-gray-800 dark:text-gray-100">{c.author} </span>

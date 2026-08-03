@@ -19,6 +19,7 @@ export default function PostCard({ post }) {
   const { t } = useLanguage()
   const { user } = useAuth()
   const profilePath = post.authorId === user?.id ? '/profile' : `/users/${post.authorId}`
+  const authorAvatar = post.authorId === user?.id ? user?.avatar : post.avatarSrc
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [heartBurst, setHeartBurst] = useState(false)
@@ -67,7 +68,7 @@ export default function PostCard({ post }) {
     <article className="soft-card overflow-hidden animate-slideUp">
       <div className="flex items-center justify-between p-4 sm:p-5 pb-3">
         <div className="flex items-center gap-3">
-          <Link to={profilePath} aria-label={`Open ${post.author}'s profile`}><Avatar name={post.author} src={post.avatarSrc} color={post.avatarColor} size={42} /></Link>
+          <Link to={profilePath} aria-label={`Open ${post.author}'s profile`}><Avatar name={post.author} src={authorAvatar} color={post.avatarColor} size={42} /></Link>
           <div>
             <Link to={profilePath} className="text-sm font-semibold text-gray-800 hover:text-primary dark:text-gray-100">
               {post.author}
@@ -169,7 +170,7 @@ export default function PostCard({ post }) {
         {post.comments.slice(-2).map((comment) => (
           <div key={comment.id} className="mt-2 flex items-start gap-2 text-sm">
             <Link to={`/users/${comment.authorId}`} aria-label={`Open ${comment.author}'s profile`}>
-              <Avatar name={comment.author} src={comment.avatarSrc} size={26} />
+              <Avatar name={comment.author} src={comment.authorId === user?.id ? user?.avatar : comment.avatarSrc} size={26} />
             </Link>
             <p className="min-w-0 flex-1 text-gray-700 dark:text-gray-200">
               <Link to={`/users/${comment.authorId}`} className="mr-1 font-semibold text-gray-900 hover:underline dark:text-white">{comment.author}</Link>
@@ -179,7 +180,7 @@ export default function PostCard({ post }) {
         ))}
 
         <form onSubmit={submitComment} className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3 dark:border-white/10">
-          <Avatar name="You" size={28} />
+          <Avatar name={user?.name || 'You'} src={user?.avatar} size={28} />
           <input
             value={commentDraft}
             onChange={(event) => { setCommentDraft(event.target.value); setCommentError('') }}

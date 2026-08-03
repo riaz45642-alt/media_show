@@ -90,6 +90,15 @@ export async function updateProfile(patch) {
   return updateStoredUser({ ...data.user, isPrivate: data.user?.is_private ?? patch.isPrivate })
 }
 
+export async function refreshProfile() {
+  const profile = await request('/users/me')
+  return updateStoredUser({
+    ...profile,
+    avatar: profile.avatar_url || null,
+    isPrivate: profile.is_private ?? false,
+  })
+}
+
 export async function deleteAccount() {
   const data = await request('/users/me', { method: 'DELETE' })
   logout()

@@ -14,6 +14,14 @@ export function AuthProvider({ children }) {
     setLoading(false)
   }, [])
 
+  useEffect(() => {
+    const synchronizeStoredProfile = (event) => {
+      if (event.key === 'mediashow_user') setUser(authService.getStoredUser())
+    }
+    window.addEventListener('storage', synchronizeStoredProfile)
+    return () => window.removeEventListener('storage', synchronizeStoredProfile)
+  }, [])
+
   const login = async (payload) => {
     const u = await authService.login(payload)
     setUser(u)
@@ -44,11 +52,17 @@ export function AuthProvider({ children }) {
     return u
   }
 
+  const refreshUser = async () => {
+    const refreshed = await authService.refreshProfile()
+    setUser(refreshed)
+    return refreshed
+  }
+
   const ageGroup = user ? getAgeGroup(user.age) : null
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, isAuthenticated: !!user, ageGroup, login, signup, continueWithGoogle, logout, updateUser }}
+      value={{ user, loading, isAuthenticated: !!user, ageGroup, login, signup, continueWithGoogle, logout, updateUser, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

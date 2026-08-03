@@ -10,7 +10,7 @@ import ContentFilterWarning from '../components/common/ContentFilterWarning'
 import { filterTextContent } from '../utils/contentFilter'
 
 export default function EditProfile() {
-  const { user, updateUser } = useAuth()
+  const { user, updateUser, refreshUser } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({
     name: user?.name || '',
@@ -100,6 +100,7 @@ export default function EditProfile() {
       }
       initialProfile.current = normalized
       updateUser({ ...updatedProfile, avatar: savedAvatar, avatar_url: savedAvatar })
+      await refreshUser()
       setSaved(true)
       setTimeout(() => navigate('/profile'), 700)
     } catch (requestError) {

@@ -24,6 +24,7 @@ export function PostsProvider({ children }) {
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
   const normalizePost = useCallback((post) => {
+    const authorId = post.author_id || post.user_id
     const media = Array.isArray(post.media) ? post.media.map((item) => ({
       id: item.id,
       type: item.type,
@@ -34,15 +35,15 @@ export function PostsProvider({ children }) {
       id: comment.id,
       author: comment.author || 'Member',
       authorId: comment.user_id,
-      avatarSrc: comment.avatar_url,
+      avatarSrc: comment.user_id === user?.id ? user?.avatar : comment.avatar_url,
       text: comment.text_content ?? comment.body ?? '',
       createdAt: comment.created_at,
     })) : []
     return {
       id: post.id,
       author: post.author || user?.name || 'Member',
-      authorId: post.author_id || post.user_id,
-      avatarSrc: post.avatar_url,
+      authorId,
+      avatarSrc: authorId === user?.id ? user?.avatar : post.avatar_url,
       time: new Date(post.published_at || post.created_at).toLocaleString(),
       type: media.length ? (media.length > 1 ? 'mixed' : media[0].type) : 'text',
       text: post.body ?? post.text_content ?? '',
@@ -54,7 +55,20 @@ export function PostsProvider({ children }) {
       safe: post.moderation_status === 'safe',
       own: (post.author_id || post.user_id) === user?.id,
     }
-  }, [user?.id, user?.name])
+  }, [user?.avatar, user?.id, user?.name])
+
+  // Feed rows are normalized snapshots. Keep every snapshot authored by the
+  // signed-in user synchronized with the single AuthContext profile source.
+  useEffect(() => {
+    if (!user?.id) return
+    setPosts((previous) => previous.map((post) => ({
+      ...post,
+      avatarSrc: post.authorId === user.id ? user.avatar : post.avatarSrc,
+      comments: post.comments.map((comment) => comment.authorId === user.id
+        ? { ...comment, avatarSrc: user.avatar }
+        : comment),
+    })))
+  }, [user?.avatar, user?.id])
 
   useEffect(() => {
     let active = true
@@ -100,6 +114,7 @@ export function PostsProvider({ children }) {
     const comment = {
       id: data.comment.id,
       author: user?.name || data.comment.author || 'You',
+      authorId: user?.id,
       avatarSrc: data.comment.avatar_url || user?.avatar,
       text: data.comment.text_content,
       createdAt: data.comment.created_at,
