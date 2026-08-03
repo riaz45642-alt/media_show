@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
-import { moderateMediaWithSightengine, SIGHTENGINE_REJECTION_THRESHOLD } from './sightengineService.js'
+import { moderateMediaWithSightengine, SIGHTENGINE_REJECTION_THRESHOLD, SIGHTENGINE_SUGGESTIVE_REJECTION_THRESHOLD } from './sightengineService.js'
 import { analyzeChildIntimacyWithGemini } from './geminiService.js'
 
 const CACHE_TTL_MS = Number(process.env.MEDIA_MODERATION_CACHE_TTL_MS || 24 * 60 * 60 * 1000)
@@ -60,6 +60,8 @@ async function runHybridModeration(file) {
     fileName: file.originalname, mediaType: file.mimetype,
     sightengineConfidence: sightengineResult.confidence,
     threshold: SIGHTENGINE_REJECTION_THRESHOLD,
+    suggestiveThreshold: SIGHTENGINE_SUGGESTIVE_REJECTION_THRESHOLD,
+    reviewCategories: sightengineResult.reviewCategories || [],
   }))
   let aiResult
   try {
@@ -90,6 +92,7 @@ async function runHybridModeration(file) {
     level: 'info', event: 'hybrid_moderation_final_decision',
     fileName: file.originalname, mediaType: file.mimetype,
     sightengineScore: sightengineResult.confidence,
+    sightengineReviewCategories: sightengineResult.reviewCategories || [],
     geminiResult: aiResult,
     finalDecision: { safe: finalResult.safe, confidence: finalResult.confidence, reason: finalResult.reason },
     rejectedBy: finalResult.rejectedBy || null,

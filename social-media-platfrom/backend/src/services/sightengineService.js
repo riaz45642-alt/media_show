@@ -10,6 +10,10 @@ const configuredThreshold = Number(process.env.MEDIA_REJECTION_CONFIDENCE)
 export const SIGHTENGINE_REJECTION_THRESHOLD = Number.isFinite(configuredThreshold)
   ? Math.max(0.05, Math.min(1, configuredThreshold))
   : 0.35
+const configuredSuggestiveThreshold = Number(process.env.MEDIA_SUGGESTIVE_REJECTION_CONFIDENCE)
+export const SIGHTENGINE_SUGGESTIVE_REJECTION_THRESHOLD = Number.isFinite(configuredSuggestiveThreshold)
+  ? Math.max(SIGHTENGINE_REJECTION_THRESHOLD, Math.min(1, configuredSuggestiveThreshold))
+  : 0.60
 
 function unavailable(reason, providerError = null, details = {}) {
   return { available: false, safe: null, confidence: null, reason, categories: [], ...details, ...(providerError ? { providerError } : {}) }
@@ -101,9 +105,19 @@ export function normalizeSightengineResponse(payload, context = {}) {
     drugs: maxMatching(leaves, /recreational_drug|drug|cannabis|cocaine|heroin|narcotic/, /none|safe/),
     offensive: maxMatching(leaves, /offensive|nazi|confederate|supremacist|terrorist|middle_finger|hate/, /none|safe/),
   }
+  // Generic "suggestive" is intentionally treated differently from explicit
+  // categories. Mirror selfies and fully-clothed portraits can produce a
+  // moderate suggestive score, so 0.35-0.60 is sent to Gemini for confirmation.
+  // Explicit and severe categories keep the strict child-safety threshold.
   const categories = Object.entries(scores)
-    .filter(([, score]) => score >= SIGHTENGINE_REJECTION_THRESHOLD)
+    .filter(([category, score]) => score >= (category === 'suggestive'
+      ? SIGHTENGINE_SUGGESTIVE_REJECTION_THRESHOLD
+      : SIGHTENGINE_REJECTION_THRESHOLD))
     .map(([category]) => category)
+  const reviewCategories = scores.suggestive >= SIGHTENGINE_REJECTION_THRESHOLD
+    && scores.suggestive < SIGHTENGINE_SUGGESTIVE_REJECTION_THRESHOLD
+    ? ['suggestive']
+    : []
   const confidence = Math.max(0, ...Object.values(scores))
   return {
     available: true,
@@ -111,6 +125,8 @@ export function normalizeSightengineResponse(payload, context = {}) {
     confidence,
     reason: categories.length ? `High-confidence prohibited content detected: ${categories.join(', ')}` : '',
     categories,
+    reviewCategories,
+    requiresSecondaryReview: reviewCategories.length > 0,
     modelCategories: scores,
     moderationProvider: 'Sightengine',
     rejectedBy: categories.length ? 'Sightengine' : null,

@@ -133,16 +133,36 @@ test('Sightengine rejects high-confidence gore', () => {
   assert.deepEqual(result.categories, ['gore'])
 })
 
-test('Sightengine blocks suggestive child-sensitive classes at the strict threshold', () => {
-  for (const payload of [
-    { nudity: { very_suggestive: 0.36 } },
-    { nudity: { suggestive: 0.4 } },
-    { nudity: { lingerie: 0.42 } },
-  ]) {
-    const result = normalizeSightengineResponse({ status: 'success', ...payload })
-    assert.equal(result.available, true)
-    assert.equal(result.safe, false)
+test('Sightengine keeps very suggestive content on the strict direct-rejection threshold', () => {
+  const result = normalizeSightengineResponse({ status: 'success', nudity: { very_suggestive: 0.36 } })
+  assert.equal(result.available, true)
+  assert.equal(result.safe, false)
+  assert.deepEqual(result.categories, ['very_suggestive'])
+})
+
+test('normal selfie false-positive score is routed to Gemini instead of rejected', () => {
+  const sightengine = normalizeSightengineResponse({ status: 'success', nudity: { suggestive: 0.40, none: 0.60 } })
+  assert.equal(sightengine.safe, true)
+  assert.equal(sightengine.requiresSecondaryReview, true)
+  assert.deepEqual(sightengine.reviewCategories, ['suggestive'])
+  const final = combineModerationDecisions(sightengine, { available: true, safe: true, confidence: 0.96, reason: '', categories: [] })
+  assert.equal(final.safe, true)
+})
+
+test('fully-clothed mirror selfie or ordinary portrait remains accepted after Gemini confirmation', () => {
+  for (const nudity of [{ suggestive: 0.48 }, { lingerie: 0.42 }, { suggestive_pose: 0.51 }]) {
+    const sightengine = normalizeSightengineResponse({ status: 'success', nudity })
+    assert.equal(sightengine.safe, true)
+    assert.equal(shouldRunSecondAiCheck(sightengine), true)
+    const final = combineModerationDecisions(sightengine, { available: true, safe: true, confidence: 0.93, reason: 'Regular clothing', categories: [] })
+    assert.equal(final.safe, true)
   }
+})
+
+test('high-confidence generic suggestive signal is still rejected directly', () => {
+  const result = normalizeSightengineResponse({ status: 'success', nudity: { suggestive: 0.72 } })
+  assert.equal(result.safe, false)
+  assert.deepEqual(result.categories, ['suggestive'])
 })
 
 test('every Sightengine-safe result is routed to Gemini', () => {
@@ -173,6 +193,17 @@ test('AI Vision can reject near-threshold child-inappropriate intimacy', () => {
   assert.equal(result.safe, false)
   assert.equal(result.rejectedBy, 'AI Vision')
   assert.deepEqual(result.categories, ['making_out'])
+})
+
+test('kissing or intimate content flagged during selfie review is rejected by Gemini', () => {
+  const sightengine = normalizeSightengineResponse({ status: 'success', nudity: { suggestive: 0.44 } })
+  const result = combineModerationDecisions(
+    sightengine,
+    { available: true, safe: false, confidence: 0.88, reason: 'Romantic kissing detected', categories: ['romantic_intimacy'] },
+  )
+  assert.equal(result.safe, false)
+  assert.equal(result.rejectedBy, 'AI Vision')
+  assert.deepEqual(result.categories, ['romantic_intimacy'])
 })
 
 test('AI Vision outage gracefully preserves Sightengine safe decision', () => {
